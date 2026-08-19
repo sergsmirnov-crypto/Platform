@@ -1,0 +1,212 @@
+/*
+ * ДИЗАЙН-ТОКЕНЫ ПЛАТФОРМЫ
+ *
+ * Единственное место, где заданы цвета, шрифты, размеры и скругления.
+ * Нигде в компонентах не должно быть значений вида `#FFDD2D` или `14px` —
+ * только ссылки на токены. Тогда изменить облик всей платформы можно
+ * правкой одного файла, а не поиском по сотне компонентов.
+ *
+ * Визуальный ориентир — vanyanauchi.com (см. docs/adr/0006-visual-identity.md).
+ * Главное отличие от сайта-витрины: жёлтый здесь акцент, а не фон.
+ * Витрина держит внимание 40 секунд, платформа — полтора часа с гитарой
+ * в руках, и заливка экрана насыщенным жёлтым на такой дистанции утомляет.
+ */
+
+/* Тёмная тема включается классом на <html>, а не системной настройкой:
+   человек должен иметь возможность выбрать сам. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ─────────────────────────────────────────────────────────────
+   ФИРМЕННЫЕ ЦВЕТА
+   Не меняются между темами: жёлтый одинаково хорош на белом и на чёрном.
+   ───────────────────────────────────────────────────────────── */
+:root {
+  --brand-yellow: #ffdd2d;
+  --brand-yellow-hover: #f5cf00;
+  --brand-yellow-soft: #fff3b0;
+  --brand-ink: #16161a;
+  --brand-red: #e5322a;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   СВЕТЛАЯ ТЕМА
+   Нейтральные тона слегка тёплые — холодный серый рядом с жёлтым
+   выглядит грязным.
+   ───────────────────────────────────────────────────────────── */
+:root {
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-sunken: #f7f6f3;
+  --surface-hover: #f2f1ee;
+
+  --content: #16161a;
+  --content-muted: #6b6b72;
+  --content-subtle: #9a9aa1;
+  --content-inverted: #ffffff;
+
+  --border: #e5e3de;
+  --border-strong: #16161a;
+
+  --accent: var(--brand-yellow);
+  --accent-hover: var(--brand-yellow-hover);
+  --accent-content: var(--brand-ink);
+  --accent-soft: var(--brand-yellow-soft);
+
+  --danger: var(--brand-red);
+  --danger-content: #ffffff;
+  --success: #1a7f4b;
+
+  --focus-ring: #16161a;
+
+  --shadow-card: 0 1px 2px rgb(22 22 26 / 0.04), 0 4px 16px rgb(22 22 26 / 0.06);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   ТЁМНАЯ ТЕМА
+   Не инверсия светлой, а полноценный второй набор. Скорее всего станет
+   основной: люди занимаются вечером (PRD v0.1 §10).
+   ───────────────────────────────────────────────────────────── */
+.dark {
+  --surface: #0f0f12;
+  --surface-raised: #1a1a1f;
+  --surface-sunken: #131316;
+  --surface-hover: #23232a;
+
+  --content: #f4f4f2;
+  --content-muted: #9a9aa3;
+  --content-subtle: #6d6d76;
+  --content-inverted: #16161a;
+
+  --border: #2a2a31;
+  --border-strong: #f4f4f2;
+
+  --accent: var(--brand-yellow);
+  --accent-hover: var(--brand-yellow-hover);
+  --accent-content: var(--brand-ink);
+  --accent-soft: #3d3410;
+
+  --danger: #ff5449;
+  --danger-content: #16161a;
+  --success: #4ade80;
+
+  --focus-ring: var(--brand-yellow);
+
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 4px 16px rgb(0 0 0 / 0.3);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   РЕГИСТРАЦИЯ ТОКЕНОВ В TAILWIND
+   После этого работают классы вида `bg-surface`, `text-content-muted`,
+   `rounded-lg`, `font-display`.
+   ───────────────────────────────────────────────────────────── */
+@theme inline {
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-surface-hover: var(--surface-hover);
+
+  --color-content: var(--content);
+  --color-content-muted: var(--content-muted);
+  --color-content-subtle: var(--content-subtle);
+  --color-content-inverted: var(--content-inverted);
+
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-content: var(--accent-content);
+  --color-accent-soft: var(--accent-soft);
+
+  --color-danger: var(--danger);
+  --color-danger-content: var(--danger-content);
+  --color-success: var(--success);
+
+  --color-focus-ring: var(--focus-ring);
+
+  /* Onest — плакатный геометрический гротеск, как в «Табы от Вани!».
+     Используется только в заголовках: в мелком кегле он утомляет. */
+  --font-display: 'Onest Variable', system-ui, sans-serif;
+  /* Golos Text сделан специально под русский язык и хорошо читается
+     в мелком кегле и на мобильном. */
+  --font-sans: 'Golos Text Variable', system-ui, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* Скругления. Крупные — с сайта-витрины: обложки и карточки там мягкие. */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1.25rem;
+  --radius-xl: 1.75rem;
+
+  --shadow-card: var(--shadow-card);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   БАЗОВЫЕ СТИЛИ
+   ───────────────────────────────────────────────────────────── */
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html {
+    /* Плавная прокрутка мешает, если человек выключил анимации в системе */
+    scroll-behavior: smooth;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  body {
+    background-color: var(--surface);
+    color: var(--content);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    /* Плотный трекинг — характерная черта тяжёлых начертаний Onest */
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+
+  /* Фокус клавиатуры виден всегда. Без этого платформой невозможно
+     пользоваться с клавиатуры, а это требование доступности (WCAG 2.1 AA). */
+  :focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background-color: var(--accent);
+    color: var(--accent-content);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   ФИРМЕННЫЙ ПРИЁМ: ПОДСВЕТКА МАРКЕРОМ
+   Взят из логотипа «Ваня, [научи!]». На платформе тот же приём работает
+   индикатором прогресса: заливка проходит по названию разбора по мере
+   прохождения частей. Приём из бренда становится функцией.
+   ───────────────────────────────────────────────────────────── */
+@utility marker-highlight {
+  background-image: linear-gradient(var(--accent-soft), var(--accent-soft));
+  background-repeat: no-repeat;
+  background-position: 0 88%;
+  background-size: 100% 0.55em;
+  /* Чуть выходит за края текста — как настоящий маркер */
+  padding-inline: 0.12em;
+}

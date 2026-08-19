@@ -1,0 +1,56 @@
+# Автоматические проверки. Запускаются на каждую отправку кода в GitHub.
+# Смысл простой: сломанный код невозможно незаметно влить в основную ветку.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Если отправить новый коммит, пока идёт проверка предыдущего —
+# старая проверка отменяется. Экономит время и минуты GitHub Actions.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Проверка качества кода
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Установка зависимостей
+        run: pnpm install --frozen-lockfile
+
+      - name: Форматирование
+        run: pnpm run format:check
+
+      - name: Линтер
+        run: pnpm run lint
+
+      - name: Проверка типов
+        run: pnpm run typecheck
+
+      - name: Тесты
+        run: pnpm run test:run
+
+      - name: Сборка
+        run: pnpm run build
+        env:
+          # Сборке достаточно синтаксически корректных значений:
+          # реальные секреты в CI не нужны и туда не попадают.
+          # Связанные правила («на боевом сервере вход обязан быть включён»)
+          # на этапе сборки не применяются — они проверяются при запуске.
+          NEXT_PUBLIC_APP_URL: http://localhost:3000
+          AUTH_ENABLED: 'false'

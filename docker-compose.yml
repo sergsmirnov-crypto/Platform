@@ -1,0 +1,45 @@
+# Окружение для локальной разработки.
+#
+# Одна команда поднимает всё, что нужно для работы:
+#   docker compose up -d
+#
+# Приложение при этом запускается отдельно (`pnpm dev`) — так быстрее
+# работает автообновление страницы при правке кода. В контейнере живёт
+# только то, что ставить на свой компьютер не хочется: база данных.
+#
+# Боевое развёртывание описано отдельно, в docker-compose.prod.yml (шаг F10).
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: guitar-club-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: guitar_club
+      # Русская сортировка и регистронезависимое сравнение — важно для
+      # поиска по названиям песен на кириллице.
+      POSTGRES_INITDB_ARGS: '--encoding=UTF8 --locale=C.UTF-8'
+    ports:
+      # Наружу отдаём нестандартный порт, чтобы не конфликтовать
+      # с PostgreSQL, который мог быть установлен на компьютере раньше.
+      - '5433:5432'
+    volumes:
+      # Данные переживают перезапуск и удаление контейнера.
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      # Приложение должно ждать не запуска контейнера, а готовности базы
+      # принимать запросы. Это разные моменты времени.
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d guitar_club']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:
+    name: guitar-club-postgres-data
+# Процесс фоновых задач при разработке запускается отдельно:
+#   pnpm worker:dev
+# В контейнер он переезжает вместе с боевым развёртыванием (шаг F10):
+# там это второй контейнер из того же образа, но с другой командой запуска.

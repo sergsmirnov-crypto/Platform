@@ -1,0 +1,40 @@
+# Зависимости
+node_modules/
+.pnpm-store/
+
+# Сборка Next.js
+.next/
+out/
+next-env.d.ts
+
+# Переменные окружения (секреты никогда не попадают в git)
+.env
+.env.local
+.env.*.local
+
+# Тесты и покрытие
+coverage/
+test-results/
+playwright-report/
+
+# Логи
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Системное
+.DS_Store
+Thumbs.db
+
+# Редакторы
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# Кэш инструментов
+*.tsbuildinfo
+.eslintcache
+
+# Локальное хранилище файлов (только разработка)
+.storage/
