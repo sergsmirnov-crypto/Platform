@@ -23,8 +23,6 @@ import type { TelegramApiResponse, TelegramChatMember, TelegramUser } from './ty
  * известному состоянию (политика fail-open, PRD v0.1 §7.4).
  */
 
-const API_BASE = 'https://api.telegram.org'
-
 /**
  * Сколько ждём ответа. Telegram обычно отвечает за десятки миллисекунд;
  * десяти секунд достаточно с большим запасом, а дольше держать
@@ -94,7 +92,9 @@ async function call<T>(
   options: CallOptions = {},
 ): Promise<T> {
   const token = requireBotToken()
-  const url = `${API_BASE}/bot${token}/${method}`
+  // Адрес берётся из настроек, а не зашит: если Telegram недоступен
+  // из страны размещения сервера, запросы идут через промежуточный сервер
+  const url = `${serverEnv.TELEGRAM_API_BASE_URL}/bot${token}/${method}`
 
   let response: Response
   try {

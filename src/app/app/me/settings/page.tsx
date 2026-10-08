@@ -1,5 +1,12 @@
 import { isLastOwner } from '@/modules/access'
-import { findProfileVisibility, identityStrings, listDevices } from '@/modules/identity'
+import {
+  findEmailByUserId,
+  findProfileVisibility,
+  findTelegramIdByUserId,
+  findTelegramUsername,
+  identityStrings,
+  listDevices,
+} from '@/modules/identity'
 import { getSession } from '@/modules/identity/current-user'
 import { getPreferences } from '@/modules/notifications/service'
 import { getSetting, SETTING_KEYS } from '@/modules/settings'
@@ -13,6 +20,7 @@ import { DeleteAccountCard } from '../_components/delete-account-card'
 import { DevicesCard } from '../_components/devices-card'
 import { LegalCard } from '../_components/legal-card'
 import { NotificationSettingsCard } from '../_components/notification-settings-card'
+import { SignInCard } from '../_components/sign-in-card'
 import { SubscriptionCard } from '../_components/subscription-card'
 import { VisibilityCard } from '../_components/visibility-card'
 
@@ -33,19 +41,32 @@ export default async function SettingsPage() {
   const session = await getSession()
   if (!session) return null
 
-  const [access, devices, renewUrl, blockedFromDeletion, visibility, preferences] =
-    await Promise.all([
-      getAccessStatus(session.user.id),
-      listDevices(session.user.id, session.sessionId),
-      getSetting<string>(SETTING_KEYS.subscriptionRenewUrl),
-      isLastOwner(session.user.id),
-      findProfileVisibility(session.user.id),
-      getPreferences(session.user.id),
-    ])
+  const userId = session.user.id
+  const [
+    access,
+    devices,
+    renewUrl,
+    blockedFromDeletion,
+    visibility,
+    preferences,
+    email,
+    telegramId,
+    telegramUsername,
+  ] = await Promise.all([
+    getAccessStatus(userId),
+    listDevices(userId, session.sessionId),
+    getSetting<string>(SETTING_KEYS.subscriptionRenewUrl),
+    isLastOwner(userId),
+    findProfileVisibility(userId),
+    getPreferences(userId),
+    findEmailByUserId(userId),
+    findTelegramIdByUserId(userId),
+    findTelegramUsername(userId),
+  ])
 
   return (
     <>
-      <PageIntro title="Настройки" description="Подписка, визитка, устройства, оформление" />
+      <PageIntro title="Настройки" description="Подписка, вход, визитка, устройства, оформление" />
 
       <div className="grid max-w-2xl gap-5">
         <SubscriptionCard
@@ -54,6 +75,12 @@ export default async function SettingsPage() {
           // на страницу переходов в Telegram: там человек найдёт бота сам.
           // Пустая кнопка была бы хуже неточной
           renewUrl={renewUrl || routes.app.club.telegram()}
+        />
+
+        <SignInCard
+          email={email}
+          hasTelegram={telegramId !== null}
+          telegramUsername={telegramUsername}
         />
 
         {/* Видимость визитки стоит выше устройств и оформления:

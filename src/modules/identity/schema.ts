@@ -157,7 +157,15 @@ export const authIdentities = pgTable(
   (table) => [
     // Один и тот же аккаунт Telegram не может быть привязан к двум людям
     uniqueIndex('auth_identities_provider_user_idx').on(table.provider, table.providerUserId),
-    index('auth_identities_user_idx').on(table.userId),
+    /*
+     * И наоборот: у человека не больше одного способа входа каждого вида.
+     * Иначе «какой Telegram проверять на подписку» перестаёт иметь ответ,
+     * а гонка двух одновременных подключений дала бы два — и ночная сверка
+     * проверяла бы случайный из них
+     */
+    // Заодно обслуживает поиск способов входа человека: участник стоит
+    // первым, поэтому отдельный индекс по нему больше не нужен
+    uniqueIndex('auth_identities_user_provider_idx').on(table.userId, table.provider),
   ],
 )
 
@@ -189,5 +197,83 @@ export const sessions = pgTable(
     uniqueIndex('sessions_token_hash_idx').on(table.tokenHash),
     index('sessions_user_idx').on(table.userId),
     index('sessions_expires_idx').on(table.expiresAt),
+  ],
+)
+
+/**
+ * Одноразовые коды входа по почте.
+ *
+ * ─────────────────────────────────────────────────────────────────
+ * ПОЧЕМУ КОД ХРАНИТСЯ ХЕШЕМ, ХОТЯ ЖИВЁТ ДЕСЯТЬ МИНУТ
+ *
+ * Десяти минут хватает, чтобы войти под любым человеком, у которого
+ * в этот момент открыт экран ввода кода, — если код можно прочитать
+ * из копии базы или из журнала запросов. Хеш с секретом приложения
+ * закрывает и то и другое: из строки базы код не восстановить.
+ * ─────────────────────────────────────────────────────────────────
+ *
+ * Строка не привязана к участнику: код запрашивают и те, у кого
+ * аккаунта ещё нет, — он появится при первом успешном вводе.
+ *
+ * Старые строки убирает ночная задача (`session-cleanup`).
+ */
+export const emailLoginCodes = pgTable(
+  'email_login_codes',
+  {
+    id: primaryId(),
+
+    /** Адрес в приведённом виде: строчные буквы, без пробелов */
+    email: text('email').notNull(),
+    /** HMAC кода вместе с идентификатором строки: код одной строки не подходит к другой */
+    codeHash: text('code_hash').notNull(),
+    /** Сколько раз код вводили неверно. На пределе код сгорает */
+    attempts: integer('attempts').notNull().default(0),
+
+    expiresAt: timestampTz('expires_at').notNull(),
+    /** Код использован, сгорел или заменён новым */
+    consumedAt: timestampTz('consumed_at'),
+
+    /** С какого адреса запрошен. Хешем, как и в сессиях */
+    ipHash: text('ip_hash'),
+
+    createdAt: createdAt(),
+  },
+  (table) => [
+    // Оба запроса модуля — «последний код этого адреса» и «сколько кодов
+    // за час» — идут по адресу с сортировкой по времени
+    index('email_login_codes_email_idx').on(table.email, table.createdAt),
+    index('email_login_codes_expires_idx').on(table.expiresAt),
+  ],
+)
+
+/**
+ * Одноразовые ссылки «Подключить Telegram».
+ *
+ * Человек вошёл по почте, платформа выдала ему ссылку на бота вида
+ * `t.me/бот?start=ключ`. Нажав «Старт», он отправляет боту этот ключ,
+ * а Telegram сообщает нам, кто именно его отправил. Так связываются
+ * аккаунт платформы и аккаунт Telegram без единого ввода вручную.
+ *
+ * В базе лежит хеш ключа: сам ключ — это право привязать свой Telegram
+ * к чужому аккаунту, и восстанавливать его из копии базы нельзя.
+ */
+export const telegramLinkTokens = pgTable(
+  'telegram_link_tokens',
+  {
+    id: primaryId(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+
+    tokenHash: text('token_hash').notNull(),
+
+    expiresAt: timestampTz('expires_at').notNull(),
+    usedAt: timestampTz('used_at'),
+
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex('telegram_link_tokens_hash_idx').on(table.tokenHash),
+    index('telegram_link_tokens_user_idx').on(table.userId),
   ],
 )

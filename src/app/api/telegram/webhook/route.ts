@@ -1,5 +1,6 @@
 import { after } from 'next/server'
 
+import { parseStartCommand } from '@/modules/identity'
 import { findUserByTelegramId } from '@/modules/identity/repository'
 import {
   claimTelegramUpdate,
@@ -12,8 +13,11 @@ import { serverEnv } from '@/shared/config/env.server'
 import { getLogger } from '@/shared/logger'
 import type { TelegramUpdate } from '@/shared/telegram/types'
 
+import { handleStartCommand } from './_lib/start-command'
+
 /**
- * Уведомления Telegram об изменении состава закрытого канала.
+ * Уведомления Telegram: изменения состава закрытого канала
+ * и команда «Старт», которой человек подключает Telegram к аккаунту.
  *
  * ─────────────────────────────────────────────────────────────────
  * ЗДЕСЬ ПОДПИСКА СТАНОВИТСЯ ЖИВОЙ
@@ -88,6 +92,15 @@ async function processUpdate(updateId: string, update: TelegramUpdate): Promise<
   const log = getLogger()
 
   try {
+    // «Старт» с ключом из ссылки на сайте: подключение Telegram (ADR-0030)
+    const start = parseStartCommand(update)
+
+    if (start) {
+      await handleStartCommand(start)
+      await markTelegramUpdate(updateId, 'processed')
+      return
+    }
+
     const verdict = interpretUpdate(update, serverEnv.TELEGRAM_CHANNEL_ID)
 
     if (verdict.kind === 'ignored') {

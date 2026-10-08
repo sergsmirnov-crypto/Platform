@@ -4,7 +4,7 @@ import { hasPermission } from '@/modules/access'
 import type { SessionContext } from '@/modules/identity'
 import { isOnboardingDone } from '@/modules/identity'
 import { getSession } from '@/modules/identity/current-user'
-import { findOnboardingState } from '@/modules/identity/repository'
+import { findOnboardingState, findTelegramIdByUserId } from '@/modules/identity/repository'
 import { missingLegalDocuments } from '@/modules/legal/service'
 import { getAccessStatus } from '@/modules/subscription'
 import type { AccessStatus } from '@/modules/subscription'
@@ -68,10 +68,23 @@ export async function requireActiveSubscription(userId: string): Promise<AccessS
   const access = await getAccessStatus(userId)
 
   if (!access.hasAccess) {
-    redirect(routes.app.subscriptionExpired())
+    redirect(await noAccessDestination(userId))
   }
 
   return access
+}
+
+/**
+ * Куда вести человека без доступа.
+ *
+ * Без подключённого Telegram платформа не знает, оплачена ли подписка,
+ * и «подписка закончилась» было бы неправдой: возможно, она оплачена
+ * минуту назад. Такого человека ведём подключать Telegram (ADR-0030).
+ */
+export async function noAccessDestination(userId: string): Promise<string> {
+  const telegramId = await findTelegramIdByUserId(userId)
+
+  return telegramId ? routes.app.subscriptionExpired() : routes.auth.connectTelegram()
 }
 
 /**

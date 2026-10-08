@@ -19,24 +19,30 @@ import { z } from 'zod'
  * ошибку — такая строка разбирается как адрес со схемой `localhost:`.
  * Без этой проверки опечатка в адресе прошла бы незамеченной.
  */
-const urlString = (message: string) =>
-  z.string().refine(
-    (value) => {
-      try {
-        const url = new URL(value)
-        return url.protocol === 'http:' || url.protocol === 'https:'
-      } catch {
-        return false
-      }
-    },
-    { message },
-  )
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+const urlString = (message: string) => z.string().refine(isHttpUrl, { message })
 
 /** Пустая строка в .env означает «не задано», а не «задано пустым». */
 const optionalText = z
   .string()
   .transform((value) => (value.trim() === '' ? undefined : value.trim()))
   .optional()
+
+/**
+ * Пустую строку превращает в «не задано» до остальных проверок.
+ * Нужно полям со значением по умолчанию: строка `SMTP_PORT=` в .env
+ * иначе стала бы числом 0, а не портом по умолчанию
+ */
+const emptyAsUnset = (value: unknown) =>
+  typeof value === 'string' && value.trim() === '' ? undefined : value
 
 export const serverEnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -50,12 +56,53 @@ export const serverEnvSchema = z.object({
   // ─── База данных (используется с шага F4) ───
   DATABASE_URL: optionalText,
 
-  // ─── Telegram (используется с Этапа 2) ───
+  /**
+   * Адрес почты владельца платформы. Кто первым войдёт с этим адресом,
+   * получит роль владельца (ADR-0030)
+   */
+  OWNER_EMAIL: optionalText,
+
+  // ─── Telegram ───
   TELEGRAM_BOT_TOKEN: optionalText,
   TELEGRAM_BOT_USERNAME: optionalText,
   TELEGRAM_WEBHOOK_SECRET: optionalText,
   TELEGRAM_CHANNEL_ID: optionalText,
-  OWNER_TELEGRAM_ID: optionalText,
+  /**
+   * Адрес, по которому сервер обращается к Telegram Bot API.
+   *
+   * По умолчанию — сам Telegram. Если из страны размещения сервера
+   * Telegram недоступен, сюда подставляется адрес промежуточного
+   * сервера за рубежом, который передаёт запросы дальше
+   */
+  TELEGRAM_API_BASE_URL: z.preprocess(
+    emptyAsUnset,
+    urlString('Должен быть полный адрес, например https://api.telegram.org')
+      .default('https://api.telegram.org')
+      .transform((value) => value.replace(/\/+$/, '')),
+  ),
+  /**
+   * Кнопка «Войти через Telegram» на экране входа.
+   *
+   * Выключена по умолчанию: вход через Telegram зависит от того, открывается
+   * ли сайт Telegram в браузере участника (ADR-0030). Код входа сохранён,
+   * чтобы вернуть кнопку переключателем, а не переписыванием
+   */
+  TELEGRAM_LOGIN_ENABLED: z.enum(['true', 'false']).default('false'),
+
+  // ─── Почта: коды входа ───
+  /**
+   * Как отправляются письма. `console` — письмо не уходит, а печатается
+   * в журнал: так разработчик видит код входа без почтового сервиса.
+   * `smtp` — настоящая отправка. На боевом сервере обязательно `smtp`
+   */
+  EMAIL_PROVIDER: z.enum(['smtp', 'console']).default('console'),
+  /** Отправитель писем: «Гитарный клуб <noreply@домен>» */
+  EMAIL_FROM: optionalText,
+  SMTP_HOST: optionalText,
+  /** 465 — защищённое соединение сразу; 587 — с переходом на защищённое */
+  SMTP_PORT: z.preprocess(emptyAsUnset, z.coerce.number().int().min(1).max(65535).default(465)),
+  SMTP_USER: optionalText,
+  SMTP_PASSWORD: optionalText,
 
   // ─── Сессии (используются с Этапа 2) ───
   SESSION_SECRET: optionalText,
@@ -117,16 +164,22 @@ function checkCrossRules(env: ServerEnv, addIssue: (path: string, message: strin
     )
   }
 
-  // Вход через Telegram требует токена бота и секрета для подписи сессий.
+  // Вход по почте требует секрета для подписи сессий и кодов, а привязка
+  // Telegram, через которую подтверждается подписка, — бота
   if (authEnabled) {
     if (!env.TELEGRAM_BOT_TOKEN) {
       addIssue(
         'TELEGRAM_BOT_TOKEN',
-        'Обязателен, когда AUTH_ENABLED=true: без него вход невозможен.',
+        'Обязателен, когда AUTH_ENABLED=true: без него нельзя подключить Telegram ' +
+          'и подтвердить подписку.',
       )
     }
     if (!env.TELEGRAM_BOT_USERNAME) {
-      addIssue('TELEGRAM_BOT_USERNAME', 'Обязателен, когда AUTH_ENABLED=true: нужен виджету входа.')
+      addIssue(
+        'TELEGRAM_BOT_USERNAME',
+        'Обязателен, когда AUTH_ENABLED=true: из него собирается ссылка на бота ' +
+          'для подключения Telegram.',
+      )
     }
     if (!env.SESSION_SECRET || env.SESSION_SECRET.length < 32) {
       addIssue(
@@ -146,6 +199,16 @@ function checkCrossRules(env: ServerEnv, addIssue: (path: string, message: strin
         'NEXT_PUBLIC_APP_URL',
         'В производственной среде адрес обязан начинаться с https:// — cookie сессии ' +
           'с префиксом __Host- по HTTP работать не будет.',
+      )
+    }
+
+    // Коды входа, напечатанные в журнал, не дойдут ни до одного участника:
+    // войти на платформу не сможет никто, включая владельца
+    if (env.EMAIL_PROVIDER === 'console') {
+      addIssue(
+        'EMAIL_PROVIDER',
+        'В производственной среде письма обязаны уходить по-настоящему: значение должно быть ' +
+          '"smtp". Иначе коды входа печатаются в журнал и войти не сможет никто.',
       )
     }
 
@@ -187,6 +250,14 @@ function checkCrossRules(env: ServerEnv, addIssue: (path: string, message: strin
           'Обязателен в производственной среде: без него обработчик разрешений ' +
             'на воспроизведение открыт всему интернету.',
         )
+      }
+    }
+  }
+
+  if (env.EMAIL_PROVIDER === 'smtp') {
+    for (const variable of ['SMTP_HOST', 'SMTP_USER', 'SMTP_PASSWORD', 'EMAIL_FROM'] as const) {
+      if (!env[variable]) {
+        addIssue(variable, 'Обязателен, когда EMAIL_PROVIDER=smtp.')
       }
     }
   }

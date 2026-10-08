@@ -1,8 +1,6 @@
 import 'server-only'
 
-import { grantRoleByCode, hasAnyRole, OWNER_ROLE_CODE } from '@/modules/access'
 import { syncAccessFromKnownMembership } from '@/modules/subscription'
-import { serverEnv } from '@/shared/config/env.server'
 import { errors } from '@/shared/errors'
 import { getLogger } from '@/shared/logger'
 import type { TelegramAuthData } from '@/shared/telegram'
@@ -14,60 +12,29 @@ import {
 } from './repository'
 import { startSession } from './service'
 import { identityStrings } from './strings'
+import { displayNameFromTelegram, providerDataFromTelegram } from './telegram-profile'
 
 import type { RequestOrigin, SessionUser } from './types'
 
 /**
- * Вход через Telegram.
+ * Вход через виджет Telegram.
+ *
+ * ⚠️ ВЫКЛЮЧЕН ПО УМОЛЧАНИЮ (ADR-0030). Основной вход — по коду на почту
+ * (`email-login.ts`): виджет работает, только если сайт Telegram
+ * открывается в браузере участника. Код сохранён, чтобы вернуть кнопку
+ * переключателем TELEGRAM_LOGIN_ENABLED, если блокировки снимут.
  *
  * Сюда попадают уже проверенные данные: подпись сверяется раньше,
  * в обработчике адреса. Этот файл отвечает только за то, что делать
  * с человеком, чья подлинность уже доказана.
  *
- * Три случая:
- *   1. Такой человек уже есть   → открываем сессию
- *   2. Человека нет             → создаём участника и открываем сессию
- *   3. Это владелец, и он первый → дополнительно выдаём роль владельца
- */
-
-/** Имя для показа, собранное из того, что прислал Telegram */
-function buildDisplayName(data: TelegramAuthData): string {
-  const parts = [data.first_name, data.last_name].filter(Boolean)
-  const name = parts.join(' ').trim()
-
-  // У человека может не быть имени в Telegram — тогда берём имя пользователя
-  return name || data.username || 'Участник клуба'
-}
-
-/** Всё, что прислал Telegram, — сохраняем для поддержки и поиска */
-function buildProviderData(data: TelegramAuthData): Record<string, unknown> {
-  return {
-    firstName: data.first_name,
-    ...(data.last_name ? { lastName: data.last_name } : {}),
-    ...(data.username ? { username: data.username } : {}),
-    ...(data.photo_url ? { photoUrl: data.photo_url } : {}),
-    lastLoginAt: new Date().toISOString(),
-  }
-}
-
-/**
- * Назначение владельца при первом входе.
+ * Два случая:
+ *   1. Такой человек уже есть → открываем сессию
+ *   2. Человека нет           → создаём участника и открываем сессию
  *
- * Роль выдаётся только тому, чей идентификатор указан в настройках,
- * и только если у него ещё нет ни одной роли. Второе условие защищает
- * от возврата роли человеку, у которого её осознанно забрали.
- *
- * Дальше права меняются в интерфейсе, а не через файл настроек.
+ * Роль владельца здесь не выдаётся: владелец определяется по почте
+ * (`owner-bootstrap.ts`).
  */
-async function grantOwnerRoleIfNeeded(userId: string, telegramId: string): Promise<void> {
-  const ownerTelegramId = serverEnv.OWNER_TELEGRAM_ID?.trim()
-
-  if (!ownerTelegramId || ownerTelegramId !== telegramId) return
-  if (await hasAnyRole(userId)) return
-
-  await grantRoleByCode(userId, OWNER_ROLE_CODE, null)
-  getLogger().info({ userId }, 'выдана роль владельца при первом входе')
-}
 
 export type TelegramSignInResult = {
   user: SessionUser
@@ -104,8 +71,8 @@ export async function signInWithTelegram(
     existing ??
     (await createUserWithTelegramIdentity({
       telegramId,
-      displayName: buildDisplayName(data),
-      providerData: buildProviderData(data),
+      displayName: displayNameFromTelegram(data),
+      providerData: providerDataFromTelegram(data),
     }))
 
   if (isNewUser) {
@@ -114,10 +81,8 @@ export async function signInWithTelegram(
     // Имя на платформе не трогается: человек мог поменять его у нас
     // осознанно. Фотография из Telegram не подставляется вовсе — её
     // участник загружает сам (см. TelegramProfile в repository.ts)
-    await updateTelegramIdentityData(telegramId, buildProviderData(data))
+    await updateTelegramIdentityData(telegramId, providerDataFromTelegram(data))
   }
-
-  await grantOwnerRoleIfNeeded(identity.userId, telegramId)
 
   /**
    * Доступ восстанавливается по фактам, накопленным до появления аккаунта.

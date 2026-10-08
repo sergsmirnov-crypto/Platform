@@ -6,7 +6,9 @@ import { telegram } from '@/shared/telegram/client'
 import { isInChannel } from '@/shared/telegram/membership'
 
 import { findEntitlementsToVerify, touchVerification } from './repository'
-import { recordChannelMembership } from './service'
+import { getAccessStatus, recordChannelMembership, syncAccessFromKnownMembership } from './service'
+
+import type { AccessStatus } from './service'
 
 /**
  * Ночная сверка подписок с Telegram.
@@ -124,4 +126,47 @@ export async function reconcileAccess(
   }
 
   return report
+}
+
+/**
+ * Проверяет членство в канале прямо сейчас, не дожидаясь ночной сверки.
+ *
+ * Вызывается в момент подключения Telegram. Человек нажал «Старт» в боте
+ * и через секунду вернулся на сайт — он ждёт открытого доступа, а не
+ * «подписка подтвердится завтра утром».
+ *
+ * Сначала спрашиваем Telegram: накопленный факт о членстве мог устареть
+ * или отсутствовать вовсе — например, человек оплатил ещё до того, как
+ * бота назначили администратором канала. Если Telegram недоступен,
+ * доступ вычисляется по накопленным фактам: политика fail-open
+ * работает и здесь.
+ *
+ * @param channelId закрытый канал. Пусто — канал не настроен, проверять нечего
+ */
+export async function verifyMembershipNow(
+  userId: string,
+  telegramId: string,
+  channelId: string | null | undefined,
+): Promise<AccessStatus> {
+  const telegramUserId = Number(telegramId)
+
+  if (channelId && Number.isSafeInteger(telegramUserId)) {
+    try {
+      const member = await telegram.getChatMember(channelId, telegramUserId)
+
+      await recordChannelMembership(telegramId, isInChannel(member), member?.status ?? 'left', {
+        userId,
+        source: 'reconcile',
+      })
+
+      return getAccessStatus(userId)
+    } catch (error) {
+      getLogger().warn(
+        { err: error, userId },
+        'не удалось проверить членство при подключении Telegram, доступ — по накопленным фактам',
+      )
+    }
+  }
+
+  return syncAccessFromKnownMembership(userId, telegramId)
 }

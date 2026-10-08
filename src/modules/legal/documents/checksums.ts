@@ -37,12 +37,12 @@ export type DocumentChecksum = {
 
 export const DOCUMENT_CHECKSUMS: Record<LegalDocumentId, DocumentChecksum> = {
   offer: {
-    version: 1,
-    sha256: '6429c860f59cd073e51bb8c7fb28cafe4ce831d27fc374146e28b2164706afce',
+    version: 2,
+    sha256: '87209a71a70569ba3d5f141b6e2e9ceaf19d19c4c306e72d26cc7237b5d68bab',
   },
   privacy: {
-    version: 1,
-    sha256: '48c7ccbd51fe06f847ab6fb95d582b3d8c2b7d56dc7e6d31cf6a7b3122f146bb',
+    version: 2,
+    sha256: 'd5dd0442918caab304b6b590aef3e37e4d35046d94f5ef5989cb878a291e0747',
   },
   contacts: {
     version: 1,

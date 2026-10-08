@@ -30,8 +30,12 @@ import { loadEnvFile } from 'node:process'
 const ENV_FILE = '.env'
 const ENV_EXAMPLE = '.env.example'
 
-/** Условный Telegram ID владельца для осмотра: настоящий не нужен */
-const DEMO_OWNER_ID = '100000001'
+/**
+ * Условная почта владельца для осмотра: настоящая не нужна. Код входа
+ * на неё печатается в окне `pnpm dev` (EMAIL_PROVIDER=console), а проще
+ * всего войти служебным входом /dev/login
+ */
+const DEMO_OWNER_EMAIL = 'owner@demo.local'
 
 function step(text: string): void {
   console.log(`\n▸ ${text}`)
@@ -59,11 +63,11 @@ function prepareEnvFile(): void {
 
   // Владелец: чтобы у демонстрационных разборов был куратор,
   // а раздел «Управление» было под кем открыть
-  content = content.replace(/^OWNER_TELEGRAM_ID=.*$/m, `OWNER_TELEGRAM_ID=${DEMO_OWNER_ID}`)
+  content = content.replace(/^OWNER_EMAIL=.*$/m, `OWNER_EMAIL=${DEMO_OWNER_EMAIL}`)
 
   writeFileSync(ENV_FILE, content, 'utf-8')
   console.log('  секрет подписи сессий: сгенерирован')
-  console.log(`  владелец для осмотра: Telegram ID ${DEMO_OWNER_ID}`)
+  console.log(`  владелец для осмотра: ${DEMO_OWNER_EMAIL}`)
 }
 
 async function run(command: string, title: string): Promise<void> {

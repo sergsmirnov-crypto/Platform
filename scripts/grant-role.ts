@@ -2,7 +2,7 @@
  * Выдача роли участнику из командной строки.
  *
  * Запуск:
- *   pnpm role:grant <telegram_id> <роль>
+ *   pnpm role:grant <почта или telegram_id> <роль>
  *
  * Роли: curator | senior_curator | admin | owner
  *
@@ -15,16 +15,18 @@
  * 1. Первый администратор. Раздел «Команда» доступен только тому,
  *    у кого уже есть право `users.roles`. Пока такого человека нет,
  *    выдать права некому — замкнутый круг. Обычно его разрывает
- *    переменная OWNER_TELEGRAM_ID при первом запуске, но она работает
- *    только в момент заполнения базы.
+ *    переменная OWNER_EMAIL при первом входе, но она работает только
+ *    для человека, у которого ещё нет ни одной роли.
  *
  * 2. Владелец потерял доступ. Роль владельца неотзываема из интерфейса
  *    именно для того, чтобы её нельзя было снять по ошибке, — но если
  *    доступ всё же утрачен, восстановить его должно быть возможно
  *    тому, у кого есть доступ к серверу.
  *
- * Команда намеренно требует Telegram ID, а не имя: имена повторяются,
- * а ошибка здесь выдаёт человеку права на всю платформу.
+ * Команда намеренно требует почту или Telegram ID, а не имя: имена
+ * повторяются, а ошибка здесь выдаёт человеку права на всю платформу.
+ * Почта — основной способ входа (ADR-0030); Telegram ID остался для тех,
+ * кто входил через Telegram до перехода на почту.
  * ─────────────────────────────────────────────────────────────────
  *
  * Участник должен хотя бы раз войти на платформу — тогда у него есть
@@ -48,21 +50,24 @@ const schema = await import('@/shared/db/schema')
 const KNOWN_ROLES = ['curator', 'senior_curator', 'admin', 'owner'] as const
 type KnownRole = (typeof KNOWN_ROLES)[number]
 
-const [telegramIdArg, roleArg] = process.argv.slice(2)
+const [whoArg, roleArg] = process.argv.slice(2)
 
 function fail(message: string): never {
   console.error(`\n${message}\n`)
-  console.error('Использование: pnpm role:grant <telegram_id> <роль>')
+  console.error('Использование: pnpm role:grant <почта или telegram_id> <роль>')
   console.error(`Роли: ${KNOWN_ROLES.join(' | ')}`)
-  console.error('Узнать Telegram ID участника: бот @userinfobot\n')
+  console.error('Почта — та, с которой участник входит на платформу.\n')
   process.exit(1)
 }
 
-const telegramId = telegramIdArg?.trim()
+const who = whoArg?.trim().toLowerCase()
 const role = roleArg?.trim() as KnownRole | undefined
 
-if (!telegramId || !/^\d+$/.test(telegramId)) {
-  fail('Не указан Telegram ID участника (это число, а не @username).')
+/** По почте или по Telegram ID: разные строки в таблице способов входа */
+const provider = who?.includes('@') ? 'email' : 'telegram'
+
+if (!who || (provider === 'telegram' && !/^\d+$/.test(who))) {
+  fail('Укажите почту участника или его Telegram ID (это число, а не @username).')
 }
 
 if (!role || !KNOWN_ROLES.includes(role)) {
@@ -83,8 +88,8 @@ const [identity] = await db
   .select({ userId: schema.authIdentities.userId })
   .from(schema.authIdentities)
   .where(
-    sql`${schema.authIdentities.provider} = 'telegram'
-        AND ${schema.authIdentities.providerUserId} = ${telegramId}`,
+    sql`${schema.authIdentities.provider} = ${provider}
+        AND ${schema.authIdentities.providerUserId} = ${who}`,
   )
   .limit(1)
 
@@ -93,7 +98,7 @@ let userId = identity?.userId
 if (!userId) {
   if (role !== 'owner') {
     fail(
-      `Участник с Telegram ID ${telegramId} не найден.\n` +
+      `Участник ${who} не найден.\n` +
         'Он должен хотя бы раз войти на платформу — тогда появится учётная запись.\n' +
         'Создать наперёд можно только владельца.',
     )
@@ -110,9 +115,10 @@ if (!userId) {
   await db.insert(schema.authIdentities).values({
     id: uuidv7(),
     userId,
-    provider: 'telegram',
-    providerUserId: telegramId,
+    provider,
+    providerUserId: who,
     isPrimary: true,
+    verifiedAt: new Date(),
   })
 
   console.log('Создана учётная запись владельца.')

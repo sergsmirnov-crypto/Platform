@@ -1235,7 +1235,7 @@ try {
   const curators = await findCurators()
   if (curators.length === 0) {
     console.log('  ⚠️  в базе нет участников — разборы останутся без кураторов')
-    console.log('     сначала выполните pnpm db:seed с заданным OWNER_TELEGRAM_ID')
+    console.log('     сначала выполните pnpm db:seed с заданным OWNER_EMAIL')
   }
 
   const tagIds = await ensureTags()

@@ -25,6 +25,11 @@ const validProduction = {
   S3_ACCESS_KEY_ID: 'key',
   S3_SECRET_ACCESS_KEY: 'secret',
   S3_PUBLIC_URL: 'https://cdn.example.com',
+  EMAIL_PROVIDER: 'smtp',
+  EMAIL_FROM: 'Гитарный клуб <noreply@club.example.com>',
+  SMTP_HOST: 'smtp.example.com',
+  SMTP_USER: 'noreply@club.example.com',
+  SMTP_PASSWORD: 'password',
 }
 
 function issuesFor(raw: Record<string, string | undefined>): string[] {
@@ -115,5 +120,59 @@ describe('хранилище файлов', () => {
 
   it('локально хранилище на диске допустимо', () => {
     expect(issuesFor({ ...minimalDev, STORAGE_PROVIDER: 'local' })).toEqual([])
+  })
+})
+
+describe('почта для кодов входа', () => {
+  it('не пускает на боевой сервер печать писем в журнал: войти не сможет никто', () => {
+    expect(issuesFor({ ...validProduction, EMAIL_PROVIDER: 'console' })).toContain('EMAIL_PROVIDER')
+  })
+
+  it('по умолчанию печатает письма в журнал: разработке не нужен почтовый сервис', () => {
+    const result = parseServerEnv(minimalDev)
+
+    expect(result.success && result.env.EMAIL_PROVIDER).toBe('console')
+  })
+
+  it('требует полный набор настроек SMTP', () => {
+    const issues = issuesFor({ ...validProduction, SMTP_PASSWORD: undefined, EMAIL_FROM: '' })
+
+    expect(issues).toContain('SMTP_PASSWORD')
+    expect(issues).toContain('EMAIL_FROM')
+  })
+
+  it('пустой порт в .env означает порт по умолчанию, а не ноль', () => {
+    const result = parseServerEnv({ ...validProduction, SMTP_PORT: '' })
+
+    expect(result.success && result.env.SMTP_PORT).toBe(465)
+  })
+})
+
+describe('адрес Telegram Bot API', () => {
+  it('по умолчанию — сам Telegram', () => {
+    const result = parseServerEnv(minimalDev)
+
+    expect(result.success && result.env.TELEGRAM_API_BASE_URL).toBe('https://api.telegram.org')
+  })
+
+  it('принимает адрес промежуточного сервера и убирает косую черту в конце', () => {
+    const result = parseServerEnv({
+      ...minimalDev,
+      TELEGRAM_API_BASE_URL: 'https://relay.example.com/tg/',
+    })
+
+    expect(result.success && result.env.TELEGRAM_API_BASE_URL).toBe('https://relay.example.com/tg')
+  })
+
+  it('пустая строка в .env означает адрес по умолчанию', () => {
+    const result = parseServerEnv({ ...minimalDev, TELEGRAM_API_BASE_URL: '' })
+
+    expect(result.success && result.env.TELEGRAM_API_BASE_URL).toBe('https://api.telegram.org')
+  })
+
+  it('отвергает адрес без протокола', () => {
+    expect(issuesFor({ ...minimalDev, TELEGRAM_API_BASE_URL: 'relay.example.com' })).toContain(
+      'TELEGRAM_API_BASE_URL',
+    )
   })
 })

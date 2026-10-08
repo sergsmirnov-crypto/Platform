@@ -30,7 +30,11 @@ import { loadEnvFile } from 'node:process'
 
 loadEnvFile('.env')
 
-const API_BASE = 'https://api.telegram.org'
+// Тот же адрес, что использует сайт: через промежуточный сервер, если он задан
+const API_BASE = (process.env.TELEGRAM_API_BASE_URL?.trim() || 'https://api.telegram.org').replace(
+  /\/+$/,
+  '',
+)
 
 /** Тот же список, что в `src/shared/telegram/types.ts` */
 const REQUIRED_UPDATE_TYPES = ['message', 'chat_member', 'my_chat_member']

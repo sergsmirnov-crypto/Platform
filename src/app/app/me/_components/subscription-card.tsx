@@ -2,6 +2,7 @@ import { identityStrings } from '@/modules/identity'
 import { subscriptionStrings } from '@/modules/subscription'
 import type { AccessStatus } from '@/modules/subscription'
 import { appConfig } from '@/shared/config/app.config'
+import { plural } from '@/shared/utils/plural'
 import { Badge, Card, CardBody, CardTitle, LinkButton } from '@/ui'
 
 /**
@@ -87,8 +88,9 @@ export function SubscriptionCard({ access, renewUrl }: SubscriptionCardProps) {
 
         {access.status === 'active' && access.daysLeft !== null ? (
           <p className="text-content-subtle mt-3 text-xs">
-            Льготный период после отмены — {appConfig.subscription.graceDays} дн.: доступ не
-            пропадает в тот же миг.
+            Льготный период после отмены — {appConfig.subscription.graceDays}{' '}
+            {plural(appConfig.subscription.graceDays, 'день', 'дня', 'дней')}: доступ не пропадает в
+            тот же миг.
           </p>
         ) : null}
       </CardBody>

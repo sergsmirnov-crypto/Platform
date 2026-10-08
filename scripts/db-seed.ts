@@ -107,11 +107,18 @@ async function seedRoles(): Promise<void> {
   }
 }
 
+/**
+ * Владелец платформы — по почте из OWNER_EMAIL (ADR-0030).
+ *
+ * Аккаунт создаётся заранее, со входом по этой почте: владелец входит
+ * кодом из письма и сразу попадает в раздел «Управление», не подключая
+ * Telegram. Доступ ему выдан вручную — подписка для этого не нужна.
+ */
 async function seedOwner(): Promise<void> {
-  const ownerTelegramId = process.env.OWNER_TELEGRAM_ID?.trim()
+  const ownerEmail = process.env.OWNER_EMAIL?.trim().toLowerCase()
 
-  if (!ownerTelegramId) {
-    console.log('  владелец: пропущено (не задан OWNER_TELEGRAM_ID)')
+  if (!ownerEmail) {
+    console.log('  владелец: пропущено (не задан OWNER_EMAIL)')
     return
   }
 
@@ -119,7 +126,7 @@ async function seedOwner(): Promise<void> {
     .select({ userId: schema.authIdentities.userId })
     .from(schema.authIdentities)
     .where(
-      sql`${schema.authIdentities.provider} = 'telegram' AND ${schema.authIdentities.providerUserId} = ${ownerTelegramId}`,
+      sql`${schema.authIdentities.provider} = 'email' AND ${schema.authIdentities.providerUserId} = ${ownerEmail}`,
     )
     .limit(1)
 
@@ -137,14 +144,15 @@ async function seedOwner(): Promise<void> {
     await db.insert(schema.authIdentities).values({
       id: uuidv7(),
       userId,
-      provider: 'telegram',
-      providerUserId: ownerTelegramId,
+      provider: 'email',
+      providerUserId: ownerEmail,
       isPrimary: true,
+      verifiedAt: new Date(),
     })
 
-    console.log(`  владелец: создан (Telegram ID ${ownerTelegramId})`)
+    console.log(`  владелец: создан (${ownerEmail})`)
   } else {
-    console.log(`  владелец: уже существует (Telegram ID ${ownerTelegramId})`)
+    console.log(`  владелец: уже существует (${ownerEmail})`)
   }
 
   const [ownerRole] = await db

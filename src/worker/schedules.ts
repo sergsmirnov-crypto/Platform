@@ -25,7 +25,7 @@ export const SCHEDULES: Schedule[] = [
   {
     queue: JOB_QUEUES.SESSION_CLEANUP,
     cron: '30 3 * * *',
-    description: 'Каждую ночь в 3:30 — уборка истёкших и закрытых сессий',
+    description: 'Каждую ночь в 3:30 — уборка истёкших сессий, кодов входа и ключей Telegram',
   },
   {
     queue: JOB_QUEUES.SUBSCRIPTION_EXPIRE,

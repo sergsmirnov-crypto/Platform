@@ -22,7 +22,8 @@ const GROUPS: Group[] = [
     title: 'Публичная зона',
     links: [
       { href: routes.home(), label: 'Лендинг и вход' },
-      { href: routes.auth.telegram(), label: 'Возврат из Telegram' },
+      { href: routes.auth.connectTelegram(), label: 'Подключение Telegram' },
+      { href: routes.auth.telegram(), label: 'Возврат из виджета Telegram (выключен)' },
       { href: routes.legal.offer(), label: 'Оферта' },
       { href: routes.legal.privacy(), label: 'Политика данных' },
       { href: routes.legal.contacts(), label: 'Контакты' },

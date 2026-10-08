@@ -16,6 +16,8 @@ import type { NextRequest } from 'next/server'
 /**
  * Возврат из виджета входа Telegram.
  *
+ * ⚠️ Работает только при TELEGRAM_LOGIN_ENABLED=true (ADR-0030).
+ *
  * Виджет настроен на перенаправление: после подтверждения Telegram сам
  * открывает этот адрес и передаёт данные человека параметрами. Обработчик
  * проверяет подпись, открывает сессию и уводит человека внутрь платформы.
@@ -45,6 +47,15 @@ function failWith(reason: string): never {
 export async function GET(request: NextRequest): Promise<never> {
   const log = getLogger()
   const params = request.nextUrl.searchParams
+
+  /*
+   * Вход через виджет выключен по умолчанию (ADR-0030). Закрыт и сам адрес,
+   * а не только кнопка: иначе по прямой ссылке продолжали бы создаваться
+   * аккаунты без почты — в них потом не войти обычным способом
+   */
+  if (serverEnv.TELEGRAM_LOGIN_ENABLED !== 'true') {
+    failWith(LOGIN_ERROR.UNAVAILABLE)
+  }
 
   const botToken = serverEnv.TELEGRAM_BOT_TOKEN
   if (!botToken) {

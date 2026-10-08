@@ -31,7 +31,7 @@ export { getSubscriptionHistory, getSubscriptionOverview, grantAccess, revokeAcc
 export type { SubscriptionListItem, SubscriptionOverview, SubscriptionSummary } from './admin'
 export type { SubscriptionFilter } from './admin-repository'
 
-export { findReconcileCandidates, reconcileAccess } from './reconcile'
+export { findReconcileCandidates, reconcileAccess, verifyMembershipNow } from './reconcile'
 export type { ReconcileReport, ReconcileTarget } from './reconcile'
 
 export { interpretUpdate, isWebhookSecretValid } from './webhook'

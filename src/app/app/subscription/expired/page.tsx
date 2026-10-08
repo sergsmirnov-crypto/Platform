@@ -1,10 +1,11 @@
 import { redirect } from 'next/navigation'
 
+import { getSession } from '@/modules/identity/current-user'
 import { subscriptionStrings } from '@/modules/subscription'
 import { routes } from '@/shared/routes'
 import { LinkButton } from '@/ui'
 
-import { getAccessForCurrentUser } from '../../_lib/guards'
+import { getAccessForCurrentUser, noAccessDestination } from '../../_lib/guards'
 
 /**
  * Экран продления подписки.
@@ -23,10 +24,17 @@ import { getAccessForCurrentUser } from '../../_lib/guards'
 export const metadata = { title: 'Подписка закончилась' }
 
 export default async function SubscriptionExpiredPage() {
+  const session = await getSession()
   const access = await getAccessForCurrentUser()
 
   if (access?.hasAccess) {
     redirect(routes.app.dashboard())
+  }
+
+  // Без Telegram о подписке ничего не известно: сначала подключение
+  if (session) {
+    const destination = await noAccessDestination(session.user.id)
+    if (destination !== routes.app.subscriptionExpired()) redirect(destination)
   }
 
   return (

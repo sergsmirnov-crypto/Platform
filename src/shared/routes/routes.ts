@@ -18,8 +18,15 @@ export const routes = {
   home: () => '/',
 
   auth: {
-    /** Возврат из виджета Telegram после входа */
+    /** Возврат из виджета Telegram после входа. Виджет выключен по умолчанию (ADR-0030) */
     telegram: () => '/auth/telegram',
+    /**
+     * Подключение Telegram после входа по почте.
+     *
+     * @param next куда вернуть человека после подключения: `/auth/connect?next=…`
+     */
+    connectTelegram: (next?: string) =>
+      next ? `/auth/connect?next=${encodeURIComponent(next)}` : '/auth/connect',
   },
 
   legal: {

@@ -3,6 +3,7 @@ import 'server-only'
 import { appConfig } from '@/shared/config/app.config'
 import { clientEnv } from '@/shared/config/env.client'
 import { getLogger } from '@/shared/logger'
+import { plural } from '@/shared/utils/plural'
 
 import { isSatisfied, missingAcceptances } from './acceptance'
 import { acceptableDocuments, LEGAL_DOCUMENTS } from './documents'
@@ -40,7 +41,7 @@ export function legalValues(): PlaceholderValues {
     PAYMENT_LOCATION: operator.paymentLocation,
     SUBSCRIPTION_PRICE: operator.subscriptionPrice,
     SUBSCRIPTION_PERIOD: operator.subscriptionPeriod,
-    GRACE_DAYS: String(appConfig.subscription.graceDays),
+    GRACE_PERIOD: daysPhrase(appConfig.subscription.graceDays),
     MAX_DEVICES: String(appConfig.session.maxActiveDevices),
     NOTICE_DAYS: String(operator.noticeDays),
     VIDEO_PROVIDER: operator.videoProvider,
@@ -49,7 +50,20 @@ export function legalValues(): PlaceholderValues {
     STORAGE_LOCATION: operator.storageLocation,
     HOSTING_PROVIDER: operator.hostingProvider,
     HOSTING_LOCATION: operator.hostingLocation,
+    EMAIL_PROVIDER: operator.emailProvider,
+    EMAIL_LOCATION: operator.emailLocation,
   }
+}
+
+/**
+ * Срок словами с числом: «1 день», «3 дня», «7 дней».
+ *
+ * Число и слово подставляются вместе, а не только число: «1 дней»
+ * в тексте договора выглядит как ошибка и подрывает доверие ко всему
+ * документу
+ */
+function daysPhrase(days: number): string {
+  return `${days} ${plural(days, 'день', 'дня', 'дней')}`
 }
 
 /**
