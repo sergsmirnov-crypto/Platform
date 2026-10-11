@@ -1,0 +1,6 @@
+/*
+ * Точка входа для стилей приложения.
+ * Сами токены и базовые правила — в src/ui/styles/tokens.css.
+ */
+@import 'tailwindcss';
+@import '../ui/styles/tokens.css';
