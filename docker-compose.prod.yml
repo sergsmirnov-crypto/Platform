@@ -1,0 +1,85 @@
+# Боевое развёртывание.
+#
+# Рассчитано на запуск через Dokploy или Coolify — они берут на себя HTTPS,
+# сертификаты и перенаправление домена. Можно запустить и напрямую:
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Три контейнера из двух образов:
+#   postgres  — база данных
+#   app       — сайт
+#   worker    — фоновые задачи (тот же образ, другая команда запуска)
+#
+# Переменные окружения задаются в панели развёртывания или в файле .env
+# рядом с этим файлом. В образ секреты не попадают никогда.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?нужно задать пароль базы}
+      POSTGRES_DB: ${POSTGRES_DB:-guitar_club}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Наружу база не смотрит: к ней обращаются только контейнеры
+    # из этой же сети. Порт не публикуется намеренно.
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?нужно задать подключение к базе}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?нужно задать адрес платформы}
+      AUTH_ENABLED: ${AUTH_ENABLED:-true}
+      SESSION_SECRET: ${SESSION_SECRET:?нужно задать секрет сессий}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+      TELEGRAM_CHANNEL_ID: ${TELEGRAM_CHANNEL_ID:-}
+      OWNER_TELEGRAM_ID: ${OWNER_TELEGRAM_ID:-}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_REGION: ${S3_REGION:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      VIDEO_PROVIDER: ${VIDEO_PROVIDER:-bunny}
+      VIDEO_API_KEY: ${VIDEO_API_KEY:-}
+      VIDEO_LIBRARY_ID: ${VIDEO_LIBRARY_ID:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+    ports:
+      - '3000:3000'
+    # Миграции применяются перед запуском сайта. Порядок важен: новая версия
+    # кода не должна работать со старой структурой базы.
+    command: sh -c "node_modules/.bin/tsx scripts/db-migrate.ts && node server.js"
+
+  worker:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?нужно задать подключение к базе}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?нужно задать адрес платформы}
+      AUTH_ENABLED: ${AUTH_ENABLED:-true}
+      SESSION_SECRET: ${SESSION_SECRET:?нужно задать секрет сессий}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
+      TELEGRAM_CHANNEL_ID: ${TELEGRAM_CHANNEL_ID:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+    # Флаг --conditions обязателен, иначе процесс не стартует: см. ADR-0008
+    command: node_modules/.bin/tsx --conditions=react-server src/worker/index.ts
+
+volumes:
+  postgres-data:

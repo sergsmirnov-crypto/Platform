@@ -1,0 +1,26 @@
+# Что НЕ попадает в образ приложения.
+# Чем меньше образ, тем быстрее развёртывание и меньше поверхность атаки.
+
+node_modules
+.next
+.git
+.github
+coverage
+test-results
+playwright-report
+
+# Секреты не должны попадать в образ никогда:
+# на боевом сервере они передаются через переменные окружения.
+.env
+.env.*
+!.env.example
+
+docs
+*.md
+!README.md
+
+.vscode
+.idea
+.DS_Store
+*.log
+*.tsbuildinfo
