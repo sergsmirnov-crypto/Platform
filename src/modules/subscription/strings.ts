@@ -17,6 +17,7 @@ export const subscriptionStrings = {
     telegram_payment: 'Оплата через Telegram',
     manual: 'Выдана вручную',
     promo: 'Промо-доступ',
+    toolsy: 'Подписка в Toolsy',
   },
 
   graceBanner: (days: number) =>

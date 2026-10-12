@@ -1,17 +1,30 @@
 import 'server-only'
 
+import { serverEnv } from '@/shared/config/env.server'
 import { ERROR_CODES, isAppError } from '@/shared/errors'
 import { getLogger } from '@/shared/logger'
 import { telegram } from '@/shared/telegram/client'
 import { isInChannel } from '@/shared/telegram/membership'
+import { isToolsyConfigured, toolsy } from '@/shared/toolsy/client'
 
-import { findEntitlementsToVerify, touchVerification } from './repository'
-import { getAccessStatus, recordChannelMembership, syncAccessFromKnownMembership } from './service'
+import {
+  findEntitlementsToVerify,
+  findMembership,
+  findToolsySubscriptionsWithStatus,
+  touchVerification,
+} from './repository'
+import {
+  getAccessStatus,
+  recordChannelMembership,
+  recordToolsySubscription,
+  syncAccessFromKnownMembership,
+} from './service'
+import { belongsToClub, readToolsySubscription, TOOLSY_ACCESS_STATUSES } from './toolsy'
 
 import type { AccessStatus } from './service'
 
 /**
- * Ночная сверка подписок с Telegram.
+ * Ночная сверка подписок с Telegram и Toolsy.
  *
  * ─────────────────────────────────────────────────────────────────
  * ЗАЧЕМ ОНА, ЕСЛИ ЕСТЬ УВЕДОМЛЕНИЯ
@@ -93,6 +106,7 @@ export async function reconcileAccess(
     try {
       const member = await telegram.getChatMember(channelId, telegramUserId)
       const nowMember = isInChannel(member)
+      const known = await findMembership(target.telegramId)
 
       report.checked += 1
 
@@ -103,12 +117,15 @@ export async function reconcileAccess(
         source: 'reconcile',
       })
 
-      if (!nowMember) {
+      // Расхождение — это когда уведомление о составе чата потерялось.
+      // Человек, который платит через Toolsy и в чат не заходил, —
+      // не расхождение: он и не должен был в нём числиться
+      if ((known?.isMember ?? false) !== nowMember) {
         report.fixed += 1
         report.discrepancies.push({
           userId: target.userId,
-          wasMember: true,
-          nowMember: false,
+          wasMember: known?.isMember ?? false,
+          nowMember,
         })
       }
     } catch (error) {
@@ -128,26 +145,152 @@ export async function reconcileAccess(
   return report
 }
 
+// ─── Toolsy ───
+
+export type ToolsySyncReport = {
+  /** Сколько подписок получено от Toolsy */
+  checked: number
+  /** Люди, у которых состояние подписки в Toolsy изменилось: им пересчитать доступ */
+  changedTelegramIds: string[]
+  /** Toolsy недоступен: сверка не состоялась, состояние прежнее */
+  unreachable: boolean
+}
+
 /**
- * Проверяет членство в канале прямо сейчас, не дожидаясь ночной сверки.
+ * Сверяет подписки с Toolsy.
+ *
+ * Ловит потерянные уведомления в обе стороны:
+ *
+ * 1. Берёт у Toolsy все действующие подписки клуба. Так находится
+ *    оплативший, о котором уведомление не дошло.
+ * 2. Подписки, которые у нас числятся действующими, но в этом списке
+ *    не оказались, спрашивает у Toolsy по одной. Так находится отменивший.
+ *
+ * Возвращает тех, у кого что-то изменилось, а не пересчитывает доступ
+ * сам: сопоставить идентификатор Telegram с участником платформы может
+ * только модуль `identity`, и это делает вызывающий — фоновая задача.
+ *
+ * Недоступность Toolsy сверку не ломает: состояние остаётся прежним,
+ * доступ не отбирается.
+ */
+export async function syncToolsySubscriptions(): Promise<ToolsySyncReport> {
+  const report: ToolsySyncReport = { checked: 0, changedTelegramIds: [], unreachable: false }
+  if (!isToolsyConfigured()) return report
+
+  const clubProductId = serverEnv.TOOLSY_PRODUCT_ID
+  const changed = new Set<string>()
+  const seen = new Set<string>()
+
+  try {
+    for (const status of TOOLSY_ACCESS_STATUSES) {
+      const subscriptions = await toolsy.listSubscriptions({
+        status,
+        ...(clubProductId ? { productId: clubProductId } : {}),
+      })
+
+      for (const raw of subscriptions) {
+        const fact = readToolsySubscription(raw)
+        if (!fact || !belongsToClub(fact, clubProductId)) continue
+
+        seen.add(fact.subscriptionId)
+        report.checked += 1
+
+        const { statusChanged } = await recordToolsySubscription(fact, { source: 'reconcile' })
+        if (statusChanged) changed.add(fact.telegramId)
+      }
+    }
+
+    // Числятся у нас действующими, но Toolsy их таковыми уже не называет
+    const knownActive = await findToolsySubscriptionsWithStatus(TOOLSY_ACCESS_STATUSES)
+
+    for (const stored of knownActive) {
+      if (seen.has(stored.id)) continue
+
+      const raw = await toolsy.getSubscription(stored.id)
+      const fact = raw ? readToolsySubscription(raw) : null
+
+      // Toolsy подписку не знает — для нас это «подписки нет»
+      const current = fact ?? {
+        subscriptionId: stored.id,
+        telegramId: stored.telegramId,
+        status: 'missing',
+        expiresAt: null,
+        productId: stored.productId,
+        sourceUpdatedAt: null,
+      }
+
+      report.checked += 1
+      const { statusChanged } = await recordToolsySubscription(current, { source: 'reconcile' })
+      if (statusChanged) changed.add(current.telegramId)
+    }
+  } catch (error) {
+    report.unreachable = true
+
+    // Сетевой сбой ожидаем и уже записан клиентом. Неверный ключ и прочие
+    // отказы — поломка настройки: уровнем «ошибка», чтобы попасть в оповещения.
+    // Доступ в обоих случаях никому не меняется
+    if (!(isAppError(error) && error.code === ERROR_CODES.UPSTREAM_UNAVAILABLE)) {
+      getLogger().error({ err: error }, 'сверка с Toolsy не удалась')
+    }
+  }
+
+  report.changedTelegramIds = [...changed]
+  return report
+}
+
+/**
+ * Обновляет сведения о подписках одного человека в Toolsy.
+ *
+ * Только сохраняет факты, доступ не пересчитывает: это сделает тот,
+ * кто вызвал, вместе с проверкой чата. Недоступность Toolsy — не ошибка.
+ */
+async function refreshToolsyFor(telegramId: string): Promise<void> {
+  if (!isToolsyConfigured()) return
+
+  const clubProductId = serverEnv.TOOLSY_PRODUCT_ID
+
+  try {
+    const subscriptions = await toolsy.listSubscriptions({
+      clientTgId: telegramId,
+      ...(clubProductId ? { productId: clubProductId } : {}),
+    })
+
+    for (const raw of subscriptions) {
+      const fact = readToolsySubscription(raw)
+      if (fact && belongsToClub(fact, clubProductId)) {
+        await recordToolsySubscription(fact, { source: 'reconcile' })
+      }
+    }
+  } catch (error) {
+    getLogger().warn(
+      { err: error },
+      'не удалось проверить подписку в Toolsy, доступ — по накопленным фактам',
+    )
+  }
+}
+
+/**
+ * Проверяет оплату прямо сейчас, не дожидаясь ночной сверки.
  *
  * Вызывается в момент подключения Telegram. Человек нажал «Старт» в боте
  * и через секунду вернулся на сайт — он ждёт открытого доступа, а не
  * «подписка подтвердится завтра утром».
  *
- * Сначала спрашиваем Telegram: накопленный факт о членстве мог устареть
- * или отсутствовать вовсе — например, человек оплатил ещё до того, как
- * бота назначили администратором канала. Если Telegram недоступен,
- * доступ вычисляется по накопленным фактам: политика fail-open
- * работает и здесь.
+ * Спрашивает оба источника: Toolsy — оплатил ли он, Telegram — состоит
+ * ли он в чате. Накопленные факты могли устареть или отсутствовать вовсе:
+ * например, человек оплатил ещё до того, как бота назначили
+ * администратором. Если источник недоступен, доступ вычисляется
+ * по накопленным фактам: политика fail-open работает и здесь.
  *
- * @param channelId закрытый канал. Пусто — канал не настроен, проверять нечего
+ * @param channelId закрытый канал. Пусто — канал не настроен, его не проверяем
  */
 export async function verifyMembershipNow(
   userId: string,
   telegramId: string,
   channelId: string | null | undefined,
 ): Promise<AccessStatus> {
+  await refreshToolsyFor(telegramId)
+
   const telegramUserId = Number(telegramId)
 
   if (channelId && Number.isSafeInteger(telegramUserId)) {

@@ -8,12 +8,16 @@
  *
  * Состояния и переходы (PRD v0.1 §4.6, §7.3):
  *
- *     none ──вошёл в канал──► active
- *     active ──вышел из канала──► grace (доступ сохраняется на льготный период,
- *                                       см. appConfig.subscription.graceDays)
- *     grace ──вернулся──► active        (льготный период сбрасывается)
+ *     none ──оплата подтверждена──► active
+ *     active ──подтверждения больше нет──► grace (доступ сохраняется на льготный
+ *                                         период, см. appConfig.subscription.graceDays)
+ *     grace ──оплата подтверждена──► active  (льготный период сбрасывается)
  *     grace ──срок вышел──► expired
- *     expired ──вернулся──► active
+ *     expired ──оплата подтверждена──► active
+ *
+ * «Оплата подтверждена» — человек в закрытом чате или у него действующая
+ * подписка в Toolsy (ADR-0031). Какой именно источник, записывается
+ * в `source`, но на переходы не влияет.
  *
  * Льготный период существует не ради доброты: он покрывает потерянное
  * уведомление, задержку платежа и отпуск. Без него любой сбой Telegram
@@ -21,7 +25,17 @@
  */
 
 export type EntitlementStatus = 'none' | 'active' | 'grace' | 'expired'
-export type EntitlementSource = 'telegram_channel' | 'telegram_payment' | 'manual' | 'promo'
+export type EntitlementSource =
+  'telegram_channel' | 'telegram_payment' | 'manual' | 'promo' | 'toolsy'
+
+/**
+ * Источники, которые подтверждают оплату автоматически.
+ *
+ * Их два: членство в закрытом чате и подписка в Toolsy (ADR-0031).
+ * Доступ открыт, если оплату подтверждает хотя бы один, — решает это
+ * не автомат, а сервис, который сводит факты от обоих
+ */
+export type PaidSource = 'telegram_channel' | 'toolsy'
 
 /** Текущее состояние доступа */
 export type EntitlementState = {
@@ -33,10 +47,10 @@ export type EntitlementState = {
 
 /** Что произошло */
 export type EntitlementEvent =
-  /** Человек оказался в закрытом канале */
-  | { type: 'joined_channel' }
-  /** Человек покинул канал или был удалён */
-  | { type: 'left_channel' }
+  /** Оплату подтверждает хотя бы один источник */
+  | { type: 'paid_confirmed'; source: PaidSource }
+  /** Ни один источник оплату больше не подтверждает */
+  | { type: 'paid_lost' }
   /** Доступ выдан вручную администратором */
   | { type: 'manual_grant'; validUntil: Date | null }
   /** Доступ отозван вручную администратором */
@@ -116,23 +130,25 @@ function computeNext(
   graceDays: number,
 ): EntitlementState {
   switch (event.type) {
-    case 'joined_channel': {
+    case 'paid_confirmed': {
       // Ручная выдача не перезаписывается: она могла быть сделана
       // с другим сроком и по другой причине
       if (isManualOverride(current)) return current
 
       return {
         status: 'active',
-        source: 'telegram_channel',
-        validUntil: null, // членство в канале бессрочно, пока человек в нём
+        source: event.source,
+        // Бессрочно, пока источник подтверждает оплату: конец наступает
+        // по явному событию, а не по дате (ADR-0031)
+        validUntil: null,
         graceUntil: null,
       }
     }
 
-    case 'left_channel': {
+    case 'paid_lost': {
       if (isManualOverride(current)) return current
 
-      // Из состояния «доступа нет» выход из канала ничего не меняет:
+      // Из состояния «доступа нет» потеря подтверждения ничего не меняет:
       // нельзя уйти в льготный период, не имея доступа
       if (!grantsAccess(current.status)) return current
 
@@ -186,7 +202,7 @@ function computeNext(
  * Сколько дней осталось до потери доступа.
  *
  * Нужно для баннера «подписка истекает через N дней». Возвращает `null`,
- * если конца не видно: членство в канале бессрочно.
+ * если конца не видно: автоматическое подтверждение оплаты бессрочно.
  */
 export function daysUntilLoss(state: EntitlementState, now: Date): number | null {
   const deadline = state.status === 'grace' ? state.graceUntil : state.validUntil

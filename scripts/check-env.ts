@@ -16,6 +16,8 @@ import { parseServerEnv, serverEnvSchema } from '../src/shared/config/env.schema
 const SECRETS = new Set([
   'TELEGRAM_BOT_TOKEN',
   'TELEGRAM_WEBHOOK_SECRET',
+  'TOOLSY_API_KEY',
+  'TOOLSY_WEBHOOK_SECRET',
   'SESSION_SECRET',
   'S3_ACCESS_KEY_ID',
   'S3_SECRET_ACCESS_KEY',

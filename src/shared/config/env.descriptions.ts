@@ -25,6 +25,15 @@ export const ENV_DESCRIPTIONS: Record<string, string> = {
   TELEGRAM_API_BASE_URL:
     'Адрес Telegram Bot API. По умолчанию https://api.telegram.org. Меняется на адрес ' +
     'промежуточного сервера, если Telegram недоступен из страны размещения сервера.',
+  TOOLSY_API_KEY:
+    'Секретный ключ API Toolsy (кабинет Toolsy → API). Нужен вместе с TOOLSY_WEBHOOK_SECRET. ' +
+    'Пусто — Toolsy не используется, подписка подтверждается только членством в чате.',
+  TOOLSY_WEBHOOK_SECRET:
+    'Секретный ключ уведомлений Toolsy (кабинет Toolsy → вебхуки). Им Toolsy подписывает ' +
+    'сообщения об оплатах — так мы отличаем настоящие от поддельных.',
+  TOOLSY_PRODUCT_ID:
+    'Продукт Toolsy, который считается подпиской на клуб. Пусто — любая подписка проекта.',
+  TOOLSY_API_BASE_URL: 'Адрес Toolsy API. По умолчанию https://api.toolsy.bot.',
   TELEGRAM_LOGIN_ENABLED:
     'Показывать ли кнопку «Войти через Telegram». По умолчанию false: основной вход — по почте.',
   EMAIL_PROVIDER:

@@ -1,12 +1,19 @@
 import 'server-only'
 
-import { and, eq, gte, inArray, isNull, lt, or } from 'drizzle-orm'
+import { and, eq, gte, inArray, isNull, lt, or, sql } from 'drizzle-orm'
 
 import { db } from '@/shared/db'
 
-import { channelMemberships, entitlements, subscriptionEvents, telegramUpdates } from './schema'
+import {
+  channelMemberships,
+  entitlements,
+  subscriptionEvents,
+  telegramUpdates,
+  toolsySubscriptions,
+} from './schema'
 
 import type { EntitlementState } from './entitlement-policy'
+import type { ToolsyFact } from './toolsy'
 
 /**
  * Запросы к базе, связанные с подписками.
@@ -183,6 +190,90 @@ export async function saveMembership(input: SaveMembershipInput): Promise<void> 
     .insert(channelMemberships)
     .values({ telegramId: input.telegramId, ...values })
     .onConflictDoUpdate({ target: channelMemberships.telegramId, set: values })
+}
+
+// ─── Подписки в Toolsy ───
+
+export type StoredToolsySubscription = {
+  id: string
+  telegramId: string
+  status: string
+  productId: string | null
+}
+
+/**
+ * Сохраняет подписку Toolsy.
+ *
+ * Устаревшие сведения не затирают новые: уведомления могут прийти
+ * не по порядку, а ночная сверка — прочитать состояние за секунду
+ * до очередного изменения. Сравнивается время изменения в самом Toolsy;
+ * если его нет, сведения считаются свежими.
+ *
+ * @returns прежнее состояние подписки, `null` — подписки раньше не было.
+ *          По нему вызывающий решает, нужно ли пересчитывать доступ
+ */
+export async function saveToolsySubscription(
+  fact: ToolsyFact,
+  options: { verifiedAt?: Date } = {},
+): Promise<{ previousStatus: string | null }> {
+  const previous = await db
+    .select({ status: toolsySubscriptions.status })
+    .from(toolsySubscriptions)
+    .where(eq(toolsySubscriptions.id, fact.subscriptionId))
+    .limit(1)
+
+  const values = {
+    telegramId: fact.telegramId,
+    status: fact.status,
+    expiresAt: fact.expiresAt,
+    productId: fact.productId,
+    sourceUpdatedAt: fact.sourceUpdatedAt,
+    ...(options.verifiedAt ? { lastVerifiedAt: options.verifiedAt } : {}),
+    updatedAt: new Date(),
+  }
+
+  await db
+    .insert(toolsySubscriptions)
+    .values({ id: fact.subscriptionId, ...values })
+    .onConflictDoUpdate({
+      target: toolsySubscriptions.id,
+      set: values,
+      setWhere: sql`${toolsySubscriptions.sourceUpdatedAt} is null
+        or excluded.source_updated_at is null
+        or ${toolsySubscriptions.sourceUpdatedAt} <= excluded.source_updated_at`,
+    })
+
+  return { previousStatus: previous[0]?.status ?? null }
+}
+
+/** Все известные подписки Toolsy человека */
+export async function findToolsySubscriptionsByTelegramId(
+  telegramId: string,
+): Promise<StoredToolsySubscription[]> {
+  return db
+    .select({
+      id: toolsySubscriptions.id,
+      telegramId: toolsySubscriptions.telegramId,
+      status: toolsySubscriptions.status,
+      productId: toolsySubscriptions.productId,
+    })
+    .from(toolsySubscriptions)
+    .where(eq(toolsySubscriptions.telegramId, telegramId))
+}
+
+/** Подписки Toolsy, которые по нашим сведениям дают доступ */
+export async function findToolsySubscriptionsWithStatus(
+  statuses: readonly string[],
+): Promise<StoredToolsySubscription[]> {
+  return db
+    .select({
+      id: toolsySubscriptions.id,
+      telegramId: toolsySubscriptions.telegramId,
+      status: toolsySubscriptions.status,
+      productId: toolsySubscriptions.productId,
+    })
+    .from(toolsySubscriptions)
+    .where(inArray(toolsySubscriptions.status, [...statuses]))
 }
 
 /** Участники, чьё состояние доступа пора перепроверить по времени */
