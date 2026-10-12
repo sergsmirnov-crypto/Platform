@@ -7,11 +7,11 @@ import { createdAt, primaryId, timestampTz, updatedAt } from '@/shared/db/column
  * Подписки.
  *
  * Главный принцип из PRD v0.1 §7.1: решение о доступе принимает платформа,
- * а не Telegram. Telegram лишь присылает событие «человек вошёл в канал»
- * или «вышел из него», а состояние доступа хранится здесь.
+ * а не Telegram. Источники — закрытый чат и сервис оплаты Toolsy (ADR-0031) —
+ * лишь присылают факты, а состояние доступа хранится и вычисляется здесь.
  *
- * Поэтому при недоступном Telegram платформа продолжает работать:
- * молчание мессенджера никогда не означает «подписка кончилась».
+ * Поэтому при недоступном источнике платформа продолжает работать:
+ * молчание никогда не означает «подписка кончилась».
  */
 
 export const entitlementStatusEnum = pgEnum('entitlement_status', [
@@ -23,12 +23,14 @@ export const entitlementStatusEnum = pgEnum('entitlement_status', [
 ])
 
 export const entitlementSourceEnum = pgEnum('entitlement_source', [
-  /** Членство в закрытом канале — основной путь сегодня */
+  /** Членство в закрытом канале */
   'telegram_channel',
   'telegram_payment',
   /** Выдано вручную администратором */
   'manual',
   'promo',
+  /** Действующая подписка в Toolsy — сервисе оплаты (ADR-0031) */
+  'toolsy',
 ])
 
 export const verificationStateEnum = pgEnum('verification_state', ['ok', 'stale', 'tg_unreachable'])
@@ -150,4 +152,49 @@ export const channelMemberships = pgTable(
     updatedAt: updatedAt(),
   },
   (table) => [index('channel_memberships_is_member_idx').on(table.isMember)],
+)
+
+/**
+ * Подписки в Toolsy — сырой факт от сервиса оплаты (ADR-0031).
+ *
+ * Второй источник сведений об оплате, независимый от Telegram: Toolsy
+ * сообщает о подписках напрямую. Устроено так же, как членство в канале,
+ * и по той же причине: ключ — подписка Toolsy и идентификатор Telegram,
+ * а не участник платформы. Человек мог оплатить, ни разу не открыв
+ * платформу, — факт сохраняется и учитывается при подключении Telegram.
+ *
+ * Одна строка на подписку, а не на человека: у одного человека их может
+ * быть несколько (продлил после отмены, купил второй тариф).
+ */
+export const toolsySubscriptions = pgTable(
+  'toolsy_subscriptions',
+  {
+    /** Идентификатор подписки в Toolsy */
+    id: text('id').primaryKey(),
+    /** Идентификатор человека в Telegram, как его знает Toolsy */
+    telegramId: text('telegram_id').notNull(),
+
+    /** Состояние в Toolsy: active, delayed, expired, canceled */
+    status: text('status').notNull(),
+    /** Конец оплаченного периода по Toolsy. Только для справки — см. ADR-0031 */
+    expiresAt: timestampTz('expires_at'),
+    productId: text('product_id'),
+
+    /**
+     * Когда подписку последний раз меняли в самом Toolsy.
+     *
+     * По нему отсекаются устаревшие сведения: уведомления могут прийти
+     * не по порядку, а старое не должно затирать новое
+     */
+    sourceUpdatedAt: timestampTz('source_updated_at'),
+    /** Когда последний раз сверялись с Toolsy напрямую */
+    lastVerifiedAt: timestampTz('last_verified_at'),
+
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    index('toolsy_subscriptions_telegram_idx').on(table.telegramId),
+    index('toolsy_subscriptions_status_idx').on(table.status),
+  ],
 )

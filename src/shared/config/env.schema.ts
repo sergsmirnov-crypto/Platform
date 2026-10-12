@@ -89,6 +89,27 @@ export const serverEnvSchema = z.object({
    */
   TELEGRAM_LOGIN_ENABLED: z.enum(['true', 'false']).default('false'),
 
+  // ─── Toolsy: сервис оплаты подписки (ADR-0031) ───
+  /**
+   * Секретный ключ API Toolsy. Нужен ночной сверке и проверке при
+   * подключении Telegram. Не задан — Toolsy не используется, подписка
+   * подтверждается только членством в закрытом чате
+   */
+  TOOLSY_API_KEY: optionalText,
+  /** Секретный ключ уведомлений: им Toolsy подписывает каждое сообщение */
+  TOOLSY_WEBHOOK_SECRET: optionalText,
+  /**
+   * Продукт Toolsy, который считается подпиской на клуб. Пусто — любая
+   * подписка проекта. Нужен, если через тот же Toolsy продаётся ещё что-то
+   */
+  TOOLSY_PRODUCT_ID: optionalText,
+  TOOLSY_API_BASE_URL: z.preprocess(
+    emptyAsUnset,
+    urlString('Должен быть полный адрес, например https://api.toolsy.bot')
+      .default('https://api.toolsy.bot')
+      .transform((value) => value.replace(/\/+$/, '')),
+  ),
+
   // ─── Почта: коды входа ───
   /**
    * Как отправляются письма. `console` — письмо не уходит, а печатается
@@ -252,6 +273,18 @@ function checkCrossRules(env: ServerEnv, addIssue: (path: string, message: strin
         )
       }
     }
+  }
+
+  // Toolsy настраивается парой: ключ API без секрета уведомлений означает,
+  // что оплаты будут видны только раз в сутки, а секрет без ключа —
+  // что потерянное уведомление никто не наверстает. Обе половины молчат
+  if (Boolean(env.TOOLSY_API_KEY) !== Boolean(env.TOOLSY_WEBHOOK_SECRET)) {
+    const missing = env.TOOLSY_API_KEY ? 'TOOLSY_WEBHOOK_SECRET' : 'TOOLSY_API_KEY'
+    addIssue(
+      missing,
+      'Toolsy настраивается парой: нужны и TOOLSY_API_KEY, и TOOLSY_WEBHOOK_SECRET. ' +
+        'Оба берутся в кабинете Toolsy. Чтобы не использовать Toolsy, оставьте пустыми оба.',
+    )
   }
 
   if (env.EMAIL_PROVIDER === 'smtp') {

@@ -28,7 +28,7 @@ export type SubscriptionRow = {
   displayName: string
   avatarId: string | null
   status: EntitlementStatus
-  source: 'telegram_channel' | 'telegram_payment' | 'manual' | 'promo' | null
+  source: 'telegram_channel' | 'telegram_payment' | 'manual' | 'promo' | 'toolsy' | null
   validUntil: Date | null
   graceUntil: Date | null
   lastVerifiedAt: Date | null

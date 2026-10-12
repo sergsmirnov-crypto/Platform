@@ -101,7 +101,7 @@ export type MemberDetails = MemberSummary & {
   blockedReason: string | null
   /** Кто заблокировал. Имя, а не идентификатор: карточку читает человек */
   blockedByName: string | null
-  accessSource: 'telegram_channel' | 'telegram_payment' | 'manual' | 'promo' | null
+  accessSource: 'telegram_channel' | 'telegram_payment' | 'manual' | 'promo' | 'toolsy' | null
   graceUntil: Date | null
   lastVerifiedAt: Date | null
   /** Сколько уроков и разборов доведено до конца — короткая справка */

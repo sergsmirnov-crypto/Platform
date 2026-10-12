@@ -14,6 +14,7 @@ export {
   grantAccessManually,
   hasActiveAccess,
   recordChannelMembership,
+  recordToolsySubscription,
   revokeAccessManually,
   syncAccessFromKnownMembership,
 } from './service'
@@ -25,14 +26,23 @@ export type {
   EntitlementSource,
   EntitlementState,
   EntitlementStatus,
+  PaidSource,
 } from './entitlement-policy'
 
 export { getSubscriptionHistory, getSubscriptionOverview, grantAccess, revokeAccess } from './admin'
 export type { SubscriptionListItem, SubscriptionOverview, SubscriptionSummary } from './admin'
 export type { SubscriptionFilter } from './admin-repository'
 
-export { findReconcileCandidates, reconcileAccess, verifyMembershipNow } from './reconcile'
-export type { ReconcileReport, ReconcileTarget } from './reconcile'
+export {
+  findReconcileCandidates,
+  reconcileAccess,
+  syncToolsySubscriptions,
+  verifyMembershipNow,
+} from './reconcile'
+export type { ReconcileReport, ReconcileTarget, ToolsySyncReport } from './reconcile'
+
+export { interpretToolsyEvent } from './toolsy'
+export type { ToolsyVerdict } from './toolsy'
 
 export { interpretUpdate, isWebhookSecretValid } from './webhook'
 export type { WebhookVerdict } from './webhook'

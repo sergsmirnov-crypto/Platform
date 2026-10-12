@@ -189,7 +189,7 @@ export type MemberDetailsRow = MemberListRow & {
   onboardingDoneAt: Date | null
   blockedReason: string | null
   blockedBy: string | null
-  accessSource: 'telegram_channel' | 'telegram_payment' | 'manual' | 'promo' | null
+  accessSource: 'telegram_channel' | 'telegram_payment' | 'manual' | 'promo' | 'toolsy' | null
   graceUntil: Date | null
   lastVerifiedAt: Date | null
 }

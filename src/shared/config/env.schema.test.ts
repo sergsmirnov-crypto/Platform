@@ -176,3 +176,33 @@ describe('адрес Telegram Bot API', () => {
     )
   })
 })
+
+describe('Toolsy', () => {
+  it('не обязателен: без него подписка подтверждается только чатом', () => {
+    expect(issuesFor(validProduction)).toEqual([])
+  })
+
+  it('принимает полный набор ключей', () => {
+    expect(
+      issuesFor({ ...validProduction, TOOLSY_API_KEY: 'key', TOOLSY_WEBHOOK_SECRET: 'secret' }),
+    ).toEqual([])
+  })
+
+  it('требует секрет уведомлений вместе с ключом API', () => {
+    expect(issuesFor({ ...minimalDev, TOOLSY_API_KEY: 'key' })).toEqual(['TOOLSY_WEBHOOK_SECRET'])
+  })
+
+  it('требует ключ API вместе с секретом уведомлений', () => {
+    expect(issuesFor({ ...minimalDev, TOOLSY_WEBHOOK_SECRET: 'secret' })).toEqual([
+      'TOOLSY_API_KEY',
+    ])
+  })
+
+  it('по умолчанию обращается к api.toolsy.bot и убирает косую черту в конце', () => {
+    const fallback = parseServerEnv({ ...minimalDev, TOOLSY_API_BASE_URL: '' })
+    const custom = parseServerEnv({ ...minimalDev, TOOLSY_API_BASE_URL: 'https://proxy.example/' })
+
+    expect(fallback.success && fallback.env.TOOLSY_API_BASE_URL).toBe('https://api.toolsy.bot')
+    expect(custom.success && custom.env.TOOLSY_API_BASE_URL).toBe('https://proxy.example')
+  })
+})

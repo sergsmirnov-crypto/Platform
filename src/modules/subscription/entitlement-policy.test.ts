@@ -35,9 +35,13 @@ describe('grantsAccess', () => {
   })
 })
 
-describe('вход в канал', () => {
+describe('оплата подтверждена', () => {
   it('открывает доступ новому человеку', () => {
-    const { next, changed } = applyEvent(state(), { type: 'joined_channel' }, options)
+    const { next, changed } = applyEvent(
+      state(),
+      { type: 'paid_confirmed', source: 'telegram_channel' },
+      options,
+    )
 
     expect(next.status).toBe('active')
     expect(next.source).toBe('telegram_channel')
@@ -51,7 +55,11 @@ describe('вход в канал', () => {
       graceUntil: new Date(NOW.getTime() + days(3)),
     })
 
-    const { next } = applyEvent(current, { type: 'joined_channel' }, options)
+    const { next } = applyEvent(
+      current,
+      { type: 'paid_confirmed', source: 'telegram_channel' },
+      options,
+    )
 
     expect(next.status).toBe('active')
     expect(next.graceUntil).toBeNull()
@@ -60,32 +68,64 @@ describe('вход в канал', () => {
   it('возвращает доступ тому, у кого он истёк', () => {
     const current = state({ status: 'expired', source: 'telegram_channel' })
 
-    expect(applyEvent(current, { type: 'joined_channel' }, options).next.status).toBe('active')
+    expect(
+      applyEvent(current, { type: 'paid_confirmed', source: 'telegram_channel' }, options).next
+        .status,
+    ).toBe('active')
   })
 
   it('не считает изменением повторное событие о том же', () => {
     const current = state({ status: 'active', source: 'telegram_channel' })
 
     // Telegram может прислать одно событие дважды — лишней записи в базу быть не должно
-    expect(applyEvent(current, { type: 'joined_channel' }, options).changed).toBe(false)
+    expect(
+      applyEvent(current, { type: 'paid_confirmed', source: 'telegram_channel' }, options).changed,
+    ).toBe(false)
   })
 
   it('не перезаписывает ручную выдачу', () => {
     const validUntil = new Date(NOW.getTime() + days(30))
     const current = state({ status: 'active', source: 'manual', validUntil })
 
-    const { next } = applyEvent(current, { type: 'joined_channel' }, options)
+    const { next } = applyEvent(
+      current,
+      { type: 'paid_confirmed', source: 'telegram_channel' },
+      options,
+    )
 
     expect(next.source).toBe('manual')
     expect(next.validUntil).toEqual(validUntil)
   })
+  it('записывает источник подтверждения: Toolsy', () => {
+    const { next } = applyEvent(state(), { type: 'paid_confirmed', source: 'toolsy' }, options)
+
+    expect(next.status).toBe('active')
+    expect(next.source).toBe('toolsy')
+    // Конец наступает по событию, а не по дате из Toolsy (ADR-0031)
+    expect(next.validUntil).toBeNull()
+  })
+
+  it('считает изменением смену источника при действующем доступе', () => {
+    const current = state({ status: 'active', source: 'telegram_channel' })
+
+    // Доступ не прерывается, но в журнале должно остаться, кто теперь его подтверждает
+    const { next, changed } = applyEvent(
+      current,
+      { type: 'paid_confirmed', source: 'toolsy' },
+      options,
+    )
+
+    expect(next.status).toBe('active')
+    expect(next.source).toBe('toolsy')
+    expect(changed).toBe(true)
+  })
 })
 
-describe('выход из канала', () => {
+describe('подтверждения оплаты больше нет', () => {
   it('переводит в льготный период, а не отбирает доступ сразу', () => {
     const current = state({ status: 'active', source: 'telegram_channel' })
 
-    const { next } = applyEvent(current, { type: 'left_channel' }, options)
+    const { next } = applyEvent(current, { type: 'paid_lost' }, options)
 
     expect(next.status).toBe('grace')
     expect(next.graceUntil).toEqual(new Date(NOW.getTime() + days(GRACE_DAYS)))
@@ -93,7 +133,7 @@ describe('выход из канала', () => {
 
   it('сохраняет доступ на время льготного периода', () => {
     const current = state({ status: 'active', source: 'telegram_channel' })
-    const { next } = applyEvent(current, { type: 'left_channel' }, options)
+    const { next } = applyEvent(current, { type: 'paid_lost' }, options)
 
     expect(grantsAccess(next.status)).toBe(true)
   })
@@ -103,17 +143,17 @@ describe('выход из канала', () => {
     const graceUntil = new Date(NOW.getTime() + days(2))
     const current = state({ status: 'grace', source: 'telegram_channel', graceUntil })
 
-    const { next, changed } = applyEvent(current, { type: 'left_channel' }, options)
+    const { next, changed } = applyEvent(current, { type: 'paid_lost' }, options)
 
     expect(next.graceUntil).toEqual(graceUntil)
     expect(changed).toBe(false)
   })
 
   it('ничего не меняет, если доступа и так не было', () => {
-    expect(applyEvent(state(), { type: 'left_channel' }, options).changed).toBe(false)
-    expect(
-      applyEvent(state({ status: 'expired' }), { type: 'left_channel' }, options).changed,
-    ).toBe(false)
+    expect(applyEvent(state(), { type: 'paid_lost' }, options).changed).toBe(false)
+    expect(applyEvent(state({ status: 'expired' }), { type: 'paid_lost' }, options).changed).toBe(
+      false,
+    )
   })
 
   it('не отбирает доступ, выданный вручную', () => {
@@ -121,7 +161,7 @@ describe('выход из канала', () => {
     // и события Telegram не должны её отменять
     const current = state({ status: 'active', source: 'manual' })
 
-    const { next, changed } = applyEvent(current, { type: 'left_channel' }, options)
+    const { next, changed } = applyEvent(current, { type: 'paid_lost' }, options)
 
     expect(next.status).toBe('active')
     expect(changed).toBe(false)
@@ -160,7 +200,11 @@ describe('ручное управление', () => {
     // Для постоянной блокировки есть отдельный механизм — право users.ban.
     const revoked = state({ status: 'expired', source: 'manual' })
 
-    const { next } = applyEvent(revoked, { type: 'joined_channel' }, options)
+    const { next } = applyEvent(
+      revoked,
+      { type: 'paid_confirmed', source: 'telegram_channel' },
+      options,
+    )
 
     expect(next.status).toBe('active')
     expect(next.source).toBe('telegram_channel')
@@ -252,11 +296,15 @@ describe('полный жизненный путь участника', () => {
   it('оплатил → бросил → вернулся через неделю', () => {
     let current = state()
 
-    current = applyEvent(current, { type: 'joined_channel' }, options).next
+    current = applyEvent(
+      current,
+      { type: 'paid_confirmed', source: 'telegram_channel' },
+      options,
+    ).next
     expect(current.status).toBe('active')
 
     // Отменил подписку
-    current = applyEvent(current, { type: 'left_channel' }, options).next
+    current = applyEvent(current, { type: 'paid_lost' }, options).next
     expect(current.status).toBe('grace')
 
     // Прошло восемь дней
@@ -271,7 +319,7 @@ describe('полный жизненный путь участника', () => {
     // Оплатил снова
     current = applyEvent(
       current,
-      { type: 'joined_channel' },
+      { type: 'paid_confirmed', source: 'telegram_channel' },
       { graceDays: GRACE_DAYS, now: later },
     ).next
     expect(current.status).toBe('active')
@@ -281,13 +329,13 @@ describe('полный жизненный путь участника', () => {
   it('передумал в льготный период — доступ не прерывался', () => {
     let current = state({ status: 'active', source: 'telegram_channel' })
 
-    current = applyEvent(current, { type: 'left_channel' }, options).next
+    current = applyEvent(current, { type: 'paid_lost' }, options).next
     expect(grantsAccess(current.status)).toBe(true)
 
     const inThreeDays = new Date(NOW.getTime() + days(3))
     current = applyEvent(
       current,
-      { type: 'joined_channel' },
+      { type: 'paid_confirmed', source: 'telegram_channel' },
       { graceDays: GRACE_DAYS, now: inThreeDays },
     ).next
 
