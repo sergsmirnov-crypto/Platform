@@ -5,6 +5,7 @@ import { z } from 'zod'
 
 import { AUDIT_ACTIONS, recordAudit } from '@/modules/audit'
 import { getSession } from '@/modules/identity/current-user'
+import { NEWS_KINDS, pinDeadlineFromDay } from '@/modules/news'
 import {
   createNews,
   getNewsForEditor,
@@ -80,13 +81,17 @@ export const saveNewsAction = defineAction({
     title: z.string().max(200),
     excerpt: z.string().max(500).nullable(),
     isPinned: z.boolean(),
+    /** «До какого дня» закрепить, ГГГГ-ММ-ДД; пусто — без срока */
+    pinnedUntilDay: z.string().max(10).nullable(),
+    kind: z.enum(NEWS_KINDS),
+    discussionUrl: z.string().max(500).nullable(),
     content: contentBlocksSchema,
   }),
-  handler: async ({ id, ...patch }) => {
+  handler: async ({ id, pinnedUntilDay, ...patch }) => {
     const actorId = await actor()
     const before = await getNewsForEditor(id)
 
-    await saveNews(actorId, id, patch)
+    await saveNews(actorId, id, { ...patch, pinnedUntil: pinDeadlineFromDay(pinnedUntilDay) })
 
     revalidateNews(before.slug)
 

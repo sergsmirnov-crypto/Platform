@@ -45,8 +45,10 @@ export default async function TelegramLinksPage() {
         />
       ) : (
         <ul className="grid gap-3 sm:grid-cols-2">
-          {chats.map((chat) => (
-            <li key={chat.url}>
+          {/* Ключ с номером: адрес у двух карточек может совпасть — например,
+            две ветки одного чата, пока куратор не вписал точные ссылки */}
+          {chats.map((chat, index) => (
+            <li key={`${index}-${chat.url}`}>
               {/* Внешняя ссылка: новая вкладка и защита от подмены
                   открывшей страницы */}
               <a

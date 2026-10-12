@@ -1,29 +1,30 @@
 import { sql } from 'drizzle-orm'
-import { boolean, customType, index, jsonb, pgTable, text, uniqueIndex, uuid } from 'drizzle-orm/pg-core' // prettier-ignore
+import { boolean, customType, index, jsonb, pgEnum, pgTable, text, uniqueIndex, uuid } from 'drizzle-orm/pg-core' // prettier-ignore
 
 import { users } from '@/modules/identity/schema'
 import { createdAt, primaryId, timestampTz, updatedAt } from '@/shared/db/columns'
 import { publicationStatusEnum } from '@/shared/db/enums'
+
+import { NEWS_KINDS } from './types'
 
 /** Тип для поискового вектора: см. пояснение в схеме разборов */
 const tsvector = customType<{ data: string }>({
   dataType: () => 'tsvector',
 })
 
+/** Вид поста: дайджест, анонс, поздравление, новость. Перечень — в `types.ts` */
+export const newsKindEnum = pgEnum('news_kind', NEWS_KINDS)
+
 /**
  * Новости клуба.
  *
  * ─────────────────────────────────────────────────────────────────
- * ЭТО НЕ ЛЕНТА И НЕ БЛОГ
+ * ЭТО НЕ БЛОГ И НЕ ЧАТ
  *
- * Соблазн сделать из новостей ленту с реакциями и комментариями есть
- * всегда. Отвергнут по тому же решению, что и внутренний чат (v0.1,
- * приложение А): живое общение уже в Telegram, и дублирование убило бы
- * оба канала.
- *
- * Новости отвечают на один вопрос: «что произошло, пока меня не было».
- * Расписание эфиров, набор в поток, итоги челленджа, объявление
- * о встрече. Читают их раз в неделю, а не листают.
+ * То же, что главная ветка чата клуба: дайджесты, анонсы, поздравления,
+ * объявления (ADR-0032). Реакции есть — это один клик, — а комментариев
+ * нет: живое общение в Telegram, и дублирование убило бы оба канала
+ * (v0.1, приложение А). Под постом — кнопка «Обсудить в чате».
  * ─────────────────────────────────────────────────────────────────
  *
  * Содержимое — тот же блочный формат, что у уроков (`shared/blocks`).
@@ -60,6 +61,22 @@ export const newsPosts = pgTable(
      * это в базе не за чем, порядок между ними задаёт дата.
      */
     isPinned: boolean('is_pinned').notNull().default(false),
+
+    /**
+     * До какого момента держать закреплённым. Пусто — пока не снимут.
+     *
+     * Анонс субботней встречи не должен висеть первым в понедельник:
+     * дата снимает закрепление сама, без похода куратора в управление
+     */
+    pinnedUntil: timestampTz('pinned_until'),
+
+    kind: newsKindEnum('kind').notNull().default('news'),
+
+    /**
+     * Ссылка на обсуждение в Telegram — сообщение в ветке чата.
+     * Пусто — кнопка «Обсудить в чате» ведёт в первый чат из настроек
+     */
+    discussionUrl: text('discussion_url'),
 
     status: publicationStatusEnum('status').notNull().default('draft'),
 

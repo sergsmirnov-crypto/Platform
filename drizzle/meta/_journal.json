@@ -134,6 +134,13 @@
       "when": 1791802205044,
       "tag": "0018_toolsy_subscriptions",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791808670652,
+      "tag": "0019_club_feed_reactions",
+      "breakpoints": true
     }
   ]
 }

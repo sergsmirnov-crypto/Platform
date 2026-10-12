@@ -1,17 +1,24 @@
 import Link from 'next/link'
 
-import { newsStrings } from '@/modules/news'
+import { NEWS_KINDS, newsStrings, parseNewsKind } from '@/modules/news'
+import type { NewsKind } from '@/modules/news'
 import { getNewsCards } from '@/modules/news/service'
+import { EMPTY_SUMMARY } from '@/modules/reactions'
+import { getReactionSummaries } from '@/modules/reactions/service'
 import { routes } from '@/shared/routes'
-import { Badge, EmptyState } from '@/ui'
+import { cn, EmptyState } from '@/ui'
 
+import { NewsCard } from '../../_components/news-card'
 import { PageIntro } from '../../_components/page-intro'
 import { getContentViewer } from '../../_lib/viewer'
 
 export const metadata = { title: newsStrings.title }
 
+type Props = { searchParams: Promise<{ kind?: string }> }
+
 /**
- * Лента новостей клуба.
+ * Лента новостей клуба — то же, что главная ветка чата: дайджесты,
+ * анонсы, поздравления, новости (ADR-0032).
  *
  * ─────────────────────────────────────────────────────────────────
  * ЧЕРНОВИКИ ВИДИТ ТОТ, КТО МОЖЕТ ПРАВИТЬ
@@ -25,52 +32,44 @@ export const metadata = { title: newsStrings.title }
  * тот и видит неопубликованные.
  * ─────────────────────────────────────────────────────────────────
  *
- * Кода в браузере здесь нет: карточка — обычная ссылка.
+ * Фильтр по виду — ссылками в адресной строке, а не кодом в браузере:
+ * им можно поделиться («все анонсы»), и он работает без JavaScript.
+ * Реакции здесь только видны; ставят их на странице поста.
  */
-export default async function NewsPage() {
+export default async function NewsPage({ searchParams }: Props) {
   const viewer = await getContentViewer('news.edit')
   if (!viewer) return null
 
-  const cards = await getNewsCards(viewer)
+  const kind = parseNewsKind((await searchParams).kind)
+  const cards = await getNewsCards(viewer, { kind })
+  const reactions = await getReactionSummaries(
+    'news_post',
+    cards.map((card) => card.id),
+    viewer.userId,
+  )
 
   return (
     <>
       <PageIntro title={newsStrings.title} description={newsStrings.description} />
 
+      <nav aria-label="Вид постов" className="mb-6 flex flex-wrap gap-2">
+        <KindLink kind={null} current={kind} />
+        {NEWS_KINDS.map((option) => (
+          <KindLink key={option} kind={option} current={kind} />
+        ))}
+      </nav>
+
       {cards.length > 0 ? (
         <ul className="space-y-3">
           {cards.map((card) => (
             <li key={card.id}>
-              <Link
-                href={routes.app.club.newsPost(card.slug)}
-                className="border-border hover:border-border-strong block rounded-xl border p-5 transition-colors"
-              >
-                <div className="mb-1 flex flex-wrap items-center gap-2">
-                  {card.isPinned ? (
-                    <Badge variant="outline" size="sm">
-                      {newsStrings.pinned}
-                    </Badge>
-                  ) : null}
-                  {card.isDraft ? (
-                    <Badge variant="draft" size="sm">
-                      {newsStrings.draft}
-                    </Badge>
-                  ) : null}
-                  <span className="text-content-muted text-sm">{formatDate(card.publishedAt)}</span>
-                </div>
-
-                <span className="font-display block text-lg font-bold">{card.title}</span>
-
-                {card.excerpt ? (
-                  <span className="text-content-muted mt-1 block">{card.excerpt}</span>
-                ) : null}
-              </Link>
+              <NewsCard card={card} reactions={reactions[card.id] ?? EMPTY_SUMMARY} />
             </li>
           ))}
         </ul>
       ) : (
         <EmptyState
-          title={newsStrings.empty}
+          title={kind ? newsStrings.emptyKind : newsStrings.empty}
           description={newsStrings.emptyDescription}
           className="border-border rounded-lg border border-dashed"
         />
@@ -79,13 +78,22 @@ export default async function NewsPage() {
   )
 }
 
-/** Неопубликованная новость даты не имеет — и не должна её выдумывать */
-function formatDate(date: Date | null): string {
-  if (!date) return ''
+function KindLink({ kind, current }: { kind: NewsKind | null; current: NewsKind | null }) {
+  const isActive = kind === current
+  const href = kind ? `${routes.app.club.news()}?kind=${kind}` : routes.app.club.news()
 
-  return new Intl.DateTimeFormat('ru-RU', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  }).format(date)
+  return (
+    <Link
+      href={href}
+      aria-current={isActive ? 'page' : undefined}
+      className={cn(
+        'flex min-h-10 items-center rounded-full border px-4 text-sm transition-colors',
+        isActive
+          ? 'border-accent bg-accent text-accent-content'
+          : 'border-border text-content-muted hover:border-border-strong',
+      )}
+    >
+      {kind ? newsStrings.kindFilters[kind] : newsStrings.allKinds}
+    </Link>
+  )
 }

@@ -9,6 +9,8 @@ import type { SearchQuery } from '@/shared/search'
 
 import { newsPosts } from './schema'
 
+import type { NewsKind } from './types'
+
 /**
  * Запросы новостей. Единственное место модуля, где есть SQL.
  */
@@ -19,34 +21,54 @@ const CARD_FIELDS = {
   title: newsPosts.title,
   excerpt: newsPosts.excerpt,
   authorName: users.displayName,
+  kind: newsPosts.kind,
   isPinned: newsPosts.isPinned,
+  pinnedUntil: newsPosts.pinnedUntil,
   publishedAt: newsPosts.publishedAt,
   status: newsPosts.status,
 }
+
+/**
+ * Закреплён ли пост прямо сейчас — то же правило, что `isPinnedNow`,
+ * но в запросе: порядок ленты должен считаться базой, а не после неё
+ */
+const PINNED_NOW = sql<boolean>`(${newsPosts.isPinned} and (${newsPosts.pinnedUntil} is null or ${newsPosts.pinnedUntil} > now()))`
 
 function visible(includeDrafts: boolean) {
   return includeDrafts ? undefined : eq(newsPosts.status, 'published')
 }
 
 /**
- * Лента: закреплённые сверху, дальше по дате.
+ * Лента: закреплённые сейчас — сверху, дальше по дате.
  *
- * Порядок задан одним индексом и не настраивается: у ленты новостей
- * не бывает «сортировки по алфавиту».
+ * Порядок не настраивается: у ленты не бывает «сортировки по алфавиту».
+ *
+ * @param kind только этот вид постов; `null` — все
  */
-export async function findNewsCards(includeDrafts: boolean, limit: number) {
+export async function findNewsCards(includeDrafts: boolean, limit: number, kind: NewsKind | null) {
   return db
     .select(CARD_FIELDS)
     .from(newsPosts)
     .leftJoin(users, eq(newsPosts.authorId, users.id))
-    .where(visible(includeDrafts))
-    .orderBy(desc(newsPosts.isPinned), desc(newsPosts.publishedAt), desc(newsPosts.createdAt))
+    .where(and(visible(includeDrafts), kind ? eq(newsPosts.kind, kind) : undefined))
+    .orderBy(desc(PINNED_NOW), desc(newsPosts.publishedAt), desc(newsPosts.createdAt))
     .limit(limit)
+}
+
+/** Виден ли пост: для проверки перед реакцией */
+export async function isNewsVisible(id: string, includeDrafts: boolean): Promise<boolean> {
+  const rows = await db
+    .select({ id: newsPosts.id })
+    .from(newsPosts)
+    .where(and(eq(newsPosts.id, id), visible(includeDrafts)))
+    .limit(1)
+
+  return rows.length > 0
 }
 
 export async function findNewsBySlug(slug: string, includeDrafts: boolean) {
   const [row] = await db
-    .select({ ...CARD_FIELDS, content: newsPosts.content })
+    .select({ ...CARD_FIELDS, content: newsPosts.content, discussionUrl: newsPosts.discussionUrl })
     .from(newsPosts)
     .leftJoin(users, eq(newsPosts.authorId, users.id))
     .where(and(eq(newsPosts.slug, slug), visible(includeDrafts)))
@@ -63,7 +85,9 @@ export async function findNewsForManage() {
       slug: newsPosts.slug,
       title: newsPosts.title,
       status: newsPosts.status,
+      kind: newsPosts.kind,
       isPinned: newsPosts.isPinned,
+      pinnedUntil: newsPosts.pinnedUntil,
       publishedAt: newsPosts.publishedAt,
       updatedAt: newsPosts.updatedAt,
       authorName: users.displayName,
@@ -116,6 +140,9 @@ export async function updateNews(
     excerpt?: string | null
     content?: unknown
     isPinned?: boolean
+    pinnedUntil?: Date | null
+    kind?: NewsKind
+    discussionUrl?: string | null
   },
 ): Promise<void> {
   await db
