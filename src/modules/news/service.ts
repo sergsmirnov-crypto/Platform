@@ -15,13 +15,15 @@ import {
   findNewsCards,
   findNewsForManage,
   insertNews,
+  isNewsVisible,
   isSlugTaken,
   searchNewsRows,
   setNewsPublished,
   updateNews,
 } from './repository'
+import { isPinnedNow, isValidDiscussionUrl } from './rules'
 
-import type { ManageNewsRow, NewsCard, NewsPostView } from './types'
+import type { ManageNewsRow, NewsCard, NewsKind, NewsPostView } from './types'
 
 /**
  * Новости клуба: чтение и правка.
@@ -38,10 +40,29 @@ import type { ManageNewsRow, NewsCard, NewsPostView } from './types'
  * а не отдельной проверкой — так забыть их спрятать невозможно.
  */
 
-export async function getNewsCards(viewer: ContentViewer): Promise<NewsCard[]> {
-  const rows = await findNewsCards(viewer.canSeeDrafts, appConfig.news.pageSize)
+/**
+ * Лента постов.
+ *
+ * @param options.kind  только этот вид; по умолчанию — все
+ * @param options.limit сколько показать; по умолчанию — страница ленты
+ */
+export async function getNewsCards(
+  viewer: ContentViewer,
+  options: { kind?: NewsKind | null; limit?: number } = {},
+): Promise<NewsCard[]> {
+  const rows = await findNewsCards(
+    viewer.canSeeDrafts,
+    options.limit ?? appConfig.news.pageSize,
+    options.kind ?? null,
+  )
+  const now = new Date()
 
-  return rows.map(toCard)
+  return rows.map((row) => toCard(row, now))
+}
+
+/** Виден ли пост этому человеку. Нужен перед реакцией: см. слой приложения */
+export async function canSeeNews(viewer: ContentViewer, id: string): Promise<boolean> {
+  return isNewsVisible(id, viewer.canSeeDrafts)
 }
 
 export async function getNewsBySlug(
@@ -52,30 +73,37 @@ export async function getNewsBySlug(
   if (!row) return null
 
   return {
-    ...toCard(row),
+    ...toCard(row, new Date()),
+    discussionUrl: row.discussionUrl,
     // Содержимое всегда проходит проверку: в JSON может лежать что
     // угодно, включая записанное прошлой версией приложения
     content: parseContentBlocks(row.content),
   }
 }
 
-function toCard(row: {
-  id: string
-  slug: string
-  title: string
-  excerpt: string | null
-  authorName: string | null
-  isPinned: boolean
-  publishedAt: Date | null
-  status: string
-}): NewsCard {
+function toCard(
+  row: {
+    id: string
+    slug: string
+    title: string
+    excerpt: string | null
+    authorName: string | null
+    kind: NewsKind
+    isPinned: boolean
+    pinnedUntil: Date | null
+    publishedAt: Date | null
+    status: string
+  },
+  now: Date,
+): NewsCard {
   return {
     id: row.id,
     slug: row.slug,
     title: row.title,
     excerpt: row.excerpt,
     authorName: row.authorName,
-    isPinned: row.isPinned,
+    kind: row.kind,
+    isPinned: isPinnedNow(row.isPinned, row.pinnedUntil, now),
     publishedAt: row.publishedAt,
     isDraft: row.status !== 'published',
   }
@@ -90,8 +118,12 @@ export async function searchNews(viewer: ContentViewer, query: SearchQuery, limi
 
 export async function listNewsForManage(): Promise<ManageNewsRow[]> {
   const rows = await findNewsForManage()
+  const now = new Date()
 
-  return rows.map((row) => ({ ...row, status: row.status }))
+  return rows.map(({ pinnedUntil, ...row }) => ({
+    ...row,
+    isPinned: isPinnedNow(row.isPinned, pinnedUntil, now),
+  }))
 }
 
 export async function getNewsForEditor(id: string) {
@@ -124,12 +156,27 @@ export async function createNews(actorId: string, title: string): Promise<string
 export async function saveNews(
   actorId: string,
   id: string,
-  patch: { title: string; excerpt: string | null; content: unknown; isPinned: boolean },
+  patch: {
+    title: string
+    excerpt: string | null
+    content: unknown
+    isPinned: boolean
+    pinnedUntil: Date | null
+    kind: NewsKind
+    discussionUrl: string | null
+  },
 ): Promise<void> {
   await requirePermission(actorId, 'news.edit')
 
   const title = patch.title.trim()
   if (!title) throw errors.validation({ title: 'Заголовок не может быть пустым' })
+
+  const discussionUrl = patch.discussionUrl?.trim() || null
+  if (discussionUrl && !isValidDiscussionUrl(discussionUrl)) {
+    throw errors.validation({
+      discussionUrl: 'Нужна ссылка на сообщение в Telegram: https://t.me/…',
+    })
+  }
 
   await updateNews(id, {
     title,
@@ -139,6 +186,10 @@ export async function saveNews(
     // до следующего чтения и там молча исчезнет
     content: parseContentBlocks(patch.content),
     isPinned: patch.isPinned,
+    // Срок без закрепления бессмыслен — не храним, чтобы не путать
+    pinnedUntil: patch.isPinned ? patch.pinnedUntil : null,
+    kind: patch.kind,
+    discussionUrl,
   })
 }
 

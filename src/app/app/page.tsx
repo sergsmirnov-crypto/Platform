@@ -1,5 +1,5 @@
 import { ClubChecklistBlock } from './_components/dashboard/club-checklist-block'
-import { ComingSoonBlock } from './_components/dashboard/coming-soon-block'
+import { ClubFeedBlock } from './_components/dashboard/club-feed-block'
 import { ContinueBlock } from './_components/dashboard/continue-block'
 import { GreetingBlock } from './_components/dashboard/greeting-block'
 import { NextStreamBlock } from './_components/dashboard/next-stream-block'
@@ -23,11 +23,14 @@ export const metadata = { title: 'Главная' }
  * и «Ближайший эфир» на шаге 7.2: страница не менялась, добавлялась
  * одна строка. Так же появятся подборка недели и ленты новинок.
  *
- * Сейчас блоков шесть — те, для которых уже есть данные. Собирать
+ * Сейчас блоков семь — те, для которых уже есть данные. Собирать
  * остальные на выдуманных числах не стали: их пришлось бы переписывать
  * дважды, а участник всё равно увидел бы пустые полки (PRD v0.1 §1.3,
  * принцип «всегда есть что открыть» начинает работать с появлением
  * содержимого, а не разметки).
+ *
+ * Временный блок «Платформа наполняется» снят: разделы, о которых он
+ * предупреждал, давно открыты (ADR-0032).
  *
  * Хлебных крошек здесь нет намеренно: вести с главной на главную незачем.
  * Поэтому и `PageIntro` не используется — приветствие само является
@@ -53,6 +56,10 @@ export default async function DashboardPage() {
           ближайших эфиров не назначено */}
       <NextStreamBlock />
 
+      {/* Новости клуба — бывшая главная ветка чата: закреплённый анонс
+          и свежие посты. После эфира: анонс эфира важнее любого поста */}
+      <ClubFeedBlock />
+
       <SubscriptionBlock userId={viewer.session.user.id} />
 
       {/* Список освоения — ниже подписки и эфира, но выше чатов: он важен
@@ -61,7 +68,6 @@ export default async function DashboardPage() {
       <ClubChecklistBlock userId={viewer.session.user.id} />
 
       <TelegramBlock />
-      <ComingSoonBlock />
     </div>
   )
 }

@@ -28,9 +28,11 @@ export async function TelegramBlock() {
       <h2 className="mb-3 text-lg font-bold">Общение клуба</h2>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {chats.map((chat) => (
+        {/* Ключ с номером: адрес у двух карточек может совпасть — например,
+            две ветки одного чата, пока куратор не вписал точные ссылки */}
+        {chats.map((chat, index) => (
           <ChatLink
-            key={chat.url}
+            key={`${index}-${chat.url}`}
             url={chat.url}
             title={chat.title}
             description={chat.description}

@@ -45,7 +45,7 @@ export default async function ManageNewsPage() {
                     {row.title || newsStrings.manage.noTitle}
                   </span>
                   <span className="text-content-muted block text-sm">
-                    {row.authorName ?? newsStrings.unknownAuthor}
+                    {newsStrings.kinds[row.kind]} · {row.authorName ?? newsStrings.unknownAuthor}
                   </span>
                 </span>
 

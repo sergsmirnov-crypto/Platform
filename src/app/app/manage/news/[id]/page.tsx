@@ -1,4 +1,4 @@
-import { newsStrings } from '@/modules/news'
+import { newsStrings, pinDayFromDeadline } from '@/modules/news'
 import { getNewsForEditor } from '@/modules/news/service'
 
 import { PageIntro } from '../../../_components/page-intro'
@@ -34,6 +34,9 @@ export default async function ManageNewsPostPage({ params }: Props) {
         initialTitle={post.title}
         initialExcerpt={post.excerpt ?? ''}
         initialPinned={post.isPinned}
+        initialPinnedUntilDay={pinDayFromDeadline(post.pinnedUntil)}
+        initialKind={post.kind}
+        initialDiscussionUrl={post.discussionUrl ?? ''}
         initialContent={post.content}
         isPublished={post.status === 'published'}
         canPublish={viewerCan(viewer, 'news.publish')}

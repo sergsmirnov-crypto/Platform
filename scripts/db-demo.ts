@@ -1229,6 +1229,93 @@ async function seedStreams(curators: string[]): Promise<void> {
   )
 }
 
+// ─── Новости клуба ───
+
+/**
+ * По посту каждого вида — как в главной ветке чата: дайджест, анонс,
+ * поздравление, новость (ADR-0032). Анонс закреплён до конца недели:
+ * так видно и закрепление, и что оно со сроком.
+ */
+const DEMO_NEWS = [
+  {
+    slug: 'demo-anons-vstrecha',
+    kind: 'announcement' as const,
+    title: 'Офлайн-встреча клуба в субботу',
+    excerpt: 'Играем вместе, разбираем вопросы вживую. Запись — в чате клуба.',
+    pinnedDays: 5,
+    publishedDaysAgo: 1,
+    content: [
+      { type: 'paragraph', text: 'Собираемся в субботу в 15:00. Берите гитары и вопросы.' },
+      {
+        type: 'list',
+        ordered: false,
+        items: ['Разбор баррэ вживую', 'Джем по кругу', 'Чай и печеньки'],
+      },
+    ],
+  },
+  {
+    slug: 'demo-daydzhest-nedeli',
+    kind: 'digest' as const,
+    title: 'Дайджест недели: три новых разбора и запись эфира',
+    excerpt: '«Пачка сигарет», «Hotel California» и эфир про перебор — всё уже на платформе.',
+    pinnedDays: null,
+    publishedDaysAgo: 2,
+    content: [
+      { type: 'paragraph', text: 'За неделю на платформе появились три разбора и запись эфира.' },
+    ],
+  },
+  {
+    slug: 'demo-den-muzyki',
+    kind: 'greeting' as const,
+    title: 'С Международным днём музыки!',
+    excerpt: 'Спасибо, что играете с нами. Сегодня — повод взять гитару в руки.',
+    pinnedDays: null,
+    publishedDaysAgo: 4,
+    content: [
+      { type: 'paragraph', text: 'Друзья, с праздником! Сыграйте сегодня что-нибудь любимое.' },
+    ],
+  },
+  {
+    slug: 'demo-platforma-zarabotala',
+    kind: 'news' as const,
+    title: 'Платформа клуба заработала',
+    excerpt: 'Разборы, курс и эфиры теперь в одном месте. Telegram остаётся для общения.',
+    pinnedDays: null,
+    publishedDaysAgo: 7,
+    content: [
+      { type: 'paragraph', text: 'Всё, что раньше было разбросано по чату, теперь здесь.' },
+    ],
+  },
+]
+
+async function seedNews(curators: string[]): Promise<void> {
+  await db.delete(schema.newsPosts).where(
+    inArray(
+      schema.newsPosts.slug,
+      DEMO_NEWS.map((post) => post.slug),
+    ),
+  )
+
+  for (const post of DEMO_NEWS) {
+    await db.insert(schema.newsPosts).values({
+      id: uuidv7(),
+      slug: post.slug,
+      kind: post.kind,
+      title: post.title,
+      excerpt: post.excerpt,
+      content: post.content,
+      authorId: curators[0] ?? null,
+      createdBy: curators[0] ?? null,
+      isPinned: post.pinnedDays !== null,
+      pinnedUntil: post.pinnedDays !== null ? daysAhead(post.pinnedDays) : null,
+      status: 'published',
+      publishedAt: daysAgo(post.publishedDaysAgo),
+    })
+  }
+
+  console.log(`  новости клуба: ${DEMO_NEWS.length}, одна закреплена до конца недели`)
+}
+
 try {
   console.log('Создаю демонстрационное содержимое…')
 
@@ -1245,6 +1332,7 @@ try {
   await seedStreams(curators)
   await seedCuratorCards(curators)
   await openDemoProfiles(curators)
+  await seedNews(curators)
 
   console.log('Готово. Каталог: /app/learn/songs')
 } catch (error) {
